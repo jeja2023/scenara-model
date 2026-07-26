@@ -7,6 +7,30 @@ from vision_model_lab.pipeline import run_experiment_pipeline
 from vision_model_lab.utils import write_yaml
 
 
+def test_command_env_strips_platform_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """回归：DSN 口令与管理员口令绝不能流入外部训练命令。"""
+    from vision_model_lab.adapters.local_tasks import _command_env
+
+    monkeypatch.setenv("VMLAB_METADATA_DB", "postgresql://u:secret@db:5432/vmlab")
+    monkeypatch.setenv("VMLAB_ADMIN_PASSWORD", "admin-secret")
+    monkeypatch.setenv("VMLAB_AUTH_TOKEN", "tok")
+    monkeypatch.setenv("HF_TOKEN", "hf-secret")
+    monkeypatch.setenv("PATH", "/usr/bin")
+    monkeypatch.delenv("VMLAB_EXTERNAL_COMMAND_ENV_PASSTHROUGH", raising=False)
+
+    env = _command_env()
+
+    assert "VMLAB_METADATA_DB" not in env
+    assert "VMLAB_ADMIN_PASSWORD" not in env
+    assert "VMLAB_AUTH_TOKEN" not in env
+    assert "HF_TOKEN" not in env
+    assert env["PATH"] == "/usr/bin"
+
+    # 显式放行后才透传。
+    monkeypatch.setenv("VMLAB_EXTERNAL_COMMAND_ENV_PASSTHROUGH", "HF_TOKEN")
+    assert _command_env()["HF_TOKEN"] == "hf-secret"
+
+
 def test_detection_baseline_pipeline_runs_and_packages() -> None:
     result = run_experiment_pipeline(Path("configs/experiments/detection_yolo_baseline.yml"), package=True)
 

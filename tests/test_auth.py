@@ -11,10 +11,15 @@ from vision_model_lab.auth import hash_password, token_digest, verify_password
 from vision_model_lab.storage import MetadataStore
 
 
+TEST_ADMIN_PASSWORD = "test-admin-password"
+
+
 @pytest.fixture(autouse=True)
-def isolated_api_store() -> Iterator[None]:
+def isolated_api_store(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     previous_store = api.STORE
     api.STORE = MetadataStore(":memory:")
+    # 引导口令已改为随机生成，测试注入固定值以保持可预期。
+    monkeypatch.setattr(api, "SETTINGS", replace(api.SETTINGS, admin_password=TEST_ADMIN_PASSWORD))
     try:
         yield
     finally:
@@ -27,7 +32,7 @@ def _client() -> TestClient:
     return client
 
 
-def _login(client: TestClient, username: str = api.DEFAULT_ADMIN_USERNAME, password: str = api.DEFAULT_ADMIN_PASSWORD) -> str:
+def _login(client: TestClient, username: str = api.DEFAULT_ADMIN_USERNAME, password: str = TEST_ADMIN_PASSWORD) -> str:
     response = client.post("/api/auth/login", json={"username": username, "password": password})
     assert response.status_code == 200
     return response.json()["token"]
@@ -55,7 +60,7 @@ def test_bootstrap_creates_default_admin() -> None:
 def test_login_success_returns_session_token() -> None:
     client = _client()
 
-    response = client.post("/api/auth/login", json={"username": "admin", "password": "admin123"})
+    response = client.post("/api/auth/login", json={"username": "admin", "password": TEST_ADMIN_PASSWORD})
 
     assert response.status_code == 200
     body = response.json()
@@ -144,6 +149,34 @@ def test_password_change_revokes_existing_sessions() -> None:
     assert client.get("/api/experiments", headers=headers).status_code == 401
     new_token = _login(client, password="new-password")
     assert client.get("/api/experiments", headers={"Authorization": f"Bearer {new_token}"}).status_code == 200
+
+
+def test_login_is_throttled_after_repeated_failures() -> None:
+    """回归：登录失败必须限流——PBKDF2 校验也是一条无需认证的 DoS 放大路径。"""
+    client = _client()
+    throttle_key = "admin|testclient"
+    api.LOGIN_THROTTLE.reset(throttle_key)
+    try:
+        for _ in range(api.SETTINGS.login_max_failures):
+            assert client.post("/api/auth/login", json={"username": "admin", "password": "nope"}).status_code == 401
+        blocked = client.post("/api/auth/login", json={"username": "admin", "password": "nope"})
+
+        assert blocked.status_code == 429
+        assert blocked.headers["Retry-After"]
+        # 限流期间即使口令正确也拒绝。
+        assert client.post("/api/auth/login", json={"username": "admin", "password": TEST_ADMIN_PASSWORD}).status_code == 429
+    finally:
+        api.LOGIN_THROTTLE.reset(throttle_key)
+
+
+def test_bootstrap_generates_password_when_not_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    """回归：未配置 VMLAB_ADMIN_PASSWORD 时不得回落到固定弱口令。"""
+    monkeypatch.setattr(api, "SETTINGS", replace(api.SETTINGS, admin_password=None))
+
+    generated = api._bootstrap_admin_user()
+
+    assert generated and len(generated) >= 12
+    assert not hasattr(api, "DEFAULT_ADMIN_PASSWORD")
 
 
 def test_expired_session_rejected() -> None:

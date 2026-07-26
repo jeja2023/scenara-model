@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
+import os
+import secrets
+import socket
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable
@@ -41,32 +47,86 @@ TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
 
 # 默认管理员账户：首次启动（users 表为空）时自动创建。
 DEFAULT_ADMIN_USERNAME = "admin"
-DEFAULT_ADMIN_PASSWORD = "admin123"
+# 不再使用固定弱口令：未配置 VMLAB_ADMIN_PASSWORD 时生成随机口令，只在启动日志中
+# 出现一次，避免"装完即弱口令"的默认不安全状态。
+GENERATED_ADMIN_PASSWORD_BYTES = 12
+
+# 本实例标识：多实例部署时区分任务归属，避免启动回收误杀其他实例的运行中任务。
+WORKER_ID = f"{socket.gethostname()}:{os.getpid()}"
 
 # 无需登录即可访问的 API 路径（登录本身与健康检查）。
 PUBLIC_API_PATHS = {"/api/auth/login"}
 
 
-def _bootstrap_admin_user() -> None:
-    """users 表为空时创建默认管理员，保证系统首次启动即可登录。"""
+class _LoginThrottle:
+    """登录失败限流：同一 (用户名, 客户端 IP) 连续失败达阈值后临时锁定。
+
+    进程内状态，单实例部署足够；多实例应在网关层补统一限流。
+    限流同时保护 PBKDF2 校验本身——210k 迭代是 CPU 密集操作，无限次爆破
+    也是一条无需认证即可触发的 DoS 放大路径。
+    """
+
+    def __init__(self, max_failures: int, lockout_seconds: int) -> None:
+        self._max_failures = max_failures
+        self._lockout_seconds = lockout_seconds
+        self._lock = threading.Lock()
+        self._failures: dict[str, tuple[int, float]] = {}
+
+    def retry_after(self, key: str) -> int:
+        with self._lock:
+            entry = self._failures.get(key)
+            if entry is None:
+                return 0
+            count, blocked_until = entry
+            if count < self._max_failures:
+                return 0
+            remaining = blocked_until - time.monotonic()
+            if remaining <= 0:
+                del self._failures[key]
+                return 0
+            return int(remaining) + 1
+
+    def record_failure(self, key: str) -> None:
+        with self._lock:
+            count = self._failures.get(key, (0, 0.0))[0] + 1
+            self._failures[key] = (count, time.monotonic() + self._lockout_seconds)
+
+    def reset(self, key: str) -> None:
+        with self._lock:
+            self._failures.pop(key, None)
+
+
+LOGIN_THROTTLE = _LoginThrottle(SETTINGS.login_max_failures, SETTINGS.login_lockout_seconds)
+
+
+def _bootstrap_admin_user() -> str | None:
+    """users 表为空时创建默认管理员，保证系统首次启动即可登录。
+
+    返回自动生成的口令；配置了 VMLAB_ADMIN_PASSWORD 或用户已存在时返回 None。
+    """
     try:
         if STORE.count_users() > 0:
-            return
-        password = SETTINGS.admin_password or DEFAULT_ADMIN_PASSWORD
+            return None
+        password = SETTINGS.admin_password
+        generated = not password
+        if generated:
+            password = secrets.token_urlsafe(GENERATED_ADMIN_PASSWORD_BYTES)
         salt, digest = hash_password(password)
         STORE.create_user(DEFAULT_ADMIN_USERNAME, salt, digest, role="admin")
         STORE.record_audit_event(actor="system", action="user.bootstrap", target=DEFAULT_ADMIN_USERNAME, detail={})
-        if SETTINGS.admin_password:
-            logger.info("created admin user %r with VMLAB_ADMIN_PASSWORD", DEFAULT_ADMIN_USERNAME)
-        else:
+        if generated:
             logger.warning(
-                "created admin user %r with default password %r; "
-                "set VMLAB_ADMIN_PASSWORD or run `vmlab user set-password` to change it",
+                "created admin user %r with a generated password: %s\n"
+                "请记录该口令；可设置 VMLAB_ADMIN_PASSWORD 或执行 `vmlab user set-password` 修改",
                 DEFAULT_ADMIN_USERNAME,
-                DEFAULT_ADMIN_PASSWORD,
+                password,
             )
+            return password
+        logger.info("created admin user %r with VMLAB_ADMIN_PASSWORD", DEFAULT_ADMIN_USERNAME)
+        return None
     except Exception:  # noqa: BLE001 - 引导失败不应阻止服务可用（例如只读 DB）
         logger.exception("admin user bootstrap failed")
+        return None
 
 
 def _recover_jobs_on_startup() -> None:
@@ -421,15 +481,32 @@ def health() -> dict[str, Any]:
 
 
 @app.post("/api/auth/login")
-def login(request: LoginRequest) -> dict[str, Any]:
+def login(request: LoginRequest, http_request: Request) -> dict[str, Any]:
+    client_host = http_request.client.host if http_request.client else "unknown"
+    throttle_key = f"{request.username}|{client_host}"
+    retry_after = LOGIN_THROTTLE.retry_after(throttle_key)
+    if retry_after:
+        STORE.record_audit_event(
+            actor=request.username,
+            action="auth.login.throttled",
+            target=request.username,
+            detail={"retry_after": retry_after},
+        )
+        raise HTTPException(
+            status_code=429,
+            detail=f"登录失败次数过多，请 {retry_after} 秒后重试",
+            headers={"Retry-After": str(retry_after)},
+        )
     try:
         user = STORE.get_user_by_username(request.username)
     except KeyError:
         user = None
     if user is None or not verify_password(request.password, user["password_salt"], user["password_hash"]):
+        LOGIN_THROTTLE.record_failure(throttle_key)
         # 用户不存在与密码错误返回同一提示，避免用户名枚举。
         STORE.record_audit_event(actor=request.username, action="auth.login.failed", target=request.username, detail={})
         raise HTTPException(status_code=401, detail="用户名或密码错误")
+    LOGIN_THROTTLE.reset(throttle_key)
     token = generate_session_token()
     expires_at = (datetime.now(timezone.utc) + timedelta(hours=SETTINGS.session_ttl_hours)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     STORE.create_auth_session(token_digest(token), int(user["id"]), user["username"], expires_at)

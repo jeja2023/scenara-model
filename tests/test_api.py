@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Iterator
 
@@ -13,10 +14,15 @@ from vision_model_lab.storage import MetadataStore
 from vision_model_lab.utils import write_yaml
 
 
+TEST_ADMIN_PASSWORD = "test-admin-password"
+
+
 @pytest.fixture(autouse=True)
-def isolated_api_store() -> Iterator[None]:
+def isolated_api_store(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     previous_store = api.STORE
     api.STORE = MetadataStore(":memory:")
+    # 引导口令已改为随机生成，测试注入固定值以保持可预期。
+    monkeypatch.setattr(api, "SETTINGS", replace(api.SETTINGS, admin_password=TEST_ADMIN_PASSWORD))
     try:
         yield
     finally:
@@ -30,7 +36,7 @@ def _client() -> TestClient:
     api._bootstrap_admin_user()
     token = client.post(
         "/api/auth/login",
-        json={"username": api.DEFAULT_ADMIN_USERNAME, "password": api.DEFAULT_ADMIN_PASSWORD},
+        json={"username": api.DEFAULT_ADMIN_USERNAME, "password": TEST_ADMIN_PASSWORD},
     ).json()["token"]
     client.headers.update({"Authorization": f"Bearer {token}"})
     return client

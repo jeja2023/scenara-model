@@ -29,6 +29,17 @@ def test_metadata_store_initializes_file_database_without_probe_files(workspace_
     assert not list(workspace_tmp_path.glob(".vmlab-wal-probe-*"))
 
 
+def test_file_database_uses_wal_not_memory_journal(workspace_tmp_path: Path) -> None:
+    """回归：文件库必须真正启用 WAL。
+
+    MEMORY 在文件库上总会成功，一旦排在候选序列最前面 WAL 就永远不会生效，
+    而 MEMORY 模式下进程崩溃极可能损坏数据库文件。
+    """
+    store = MetadataStore(workspace_tmp_path / "journal.sqlite3")
+
+    assert store.journal_mode() == "WAL"
+
+
 def test_metadata_store_pipeline_job_lifecycle() -> None:
     store = MetadataStore(":memory:")
 

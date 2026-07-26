@@ -112,17 +112,39 @@ def _resolve_command_cwd(cwd: str | Path) -> Path:
     return resolved
 
 
+# 训练脚本确实需要的少数平台变量：workspace 用于定位数据与产物目录。
+_ENV_ALLOWLIST = {"VMLAB_WORKSPACE"}
+# 平台配置与凭证一律不进入子进程。VMLAB_METADATA_DB 会携带 PostgreSQL DSN 中的
+# 明文口令，VMLAB_ADMIN_PASSWORD 是控制台管理员口令。
+_ENV_BLOCKED_PREFIXES = ("VMLAB_", "AWS_", "POSTGRES_", "MINIO_", "PG")
+_ENV_BLOCKED_KEYWORDS = ("PASSWORD", "SECRET", "TOKEN", "CREDENTIAL", "ACCESS_KEY", "PRIVATE_KEY", "DSN")
+
+
+def _env_passthrough() -> set[str]:
+    """部署方显式放行的变量名（逗号分隔），用于训练确需的第三方凭证。"""
+    raw = os.environ.get("VMLAB_EXTERNAL_COMMAND_ENV_PASSTHROUGH", "")
+    return {item.strip().upper() for item in raw.split(",") if item.strip()}
+
+
+def _is_sensitive_env(name: str, passthrough: set[str]) -> bool:
+    upper = name.upper()
+    if upper in _ENV_ALLOWLIST or upper in passthrough:
+        return False
+    if upper.startswith(_ENV_BLOCKED_PREFIXES):
+        return True
+    return any(keyword in upper for keyword in _ENV_BLOCKED_KEYWORDS)
+
+
 def _command_env() -> dict[str, str]:
-    """外部命令环境：剥离平台自身机密，避免任意 argv 命令读取服务端凭证。"""
-    blocked = {
-        "VMLAB_AUTH_TOKEN",
-        "VMLAB_S3_ACCESS_KEY_ID",
-        "VMLAB_S3_SECRET_ACCESS_KEY",
-        "AWS_ACCESS_KEY_ID",
-        "AWS_SECRET_ACCESS_KEY",
-        "AWS_SESSION_TOKEN",
-    }
-    return {key: value for key, value in os.environ.items() if key not in blocked}
+    """外部命令环境：剥离平台配置与全部凭证类变量。
+
+    按前缀 + 关键字匹配而非精确列举——精确列举会在新增配置项时静默失效，
+    VMLAB_METADATA_DB（含 PG 口令）与 VMLAB_ADMIN_PASSWORD 就是这样漏掉的。
+    训练确需的第三方凭证（如 HF_TOKEN）请通过
+    VMLAB_EXTERNAL_COMMAND_ENV_PASSTHROUGH 显式放行。
+    """
+    passthrough = _env_passthrough()
+    return {key: value for key, value in os.environ.items() if not _is_sensitive_env(key, passthrough)}
 
 
 def _terminate_process_tree(process: subprocess.Popen[str]) -> None:

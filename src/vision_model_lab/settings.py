@@ -46,6 +46,10 @@ class Settings:
     auth_token: str | None
     admin_password: str | None
     session_ttl_hours: int
+    login_max_failures: int
+    login_lockout_seconds: int
+    log_retention_days: int
+    maintenance_interval_seconds: int
     pipeline_workers: int
     external_command_timeout_seconds: int
     external_command_log_max_chars: int
@@ -72,6 +76,10 @@ def load_settings() -> Settings:
         auth_token=os.environ.get("VMLAB_AUTH_TOKEN"),
         admin_password=os.environ.get("VMLAB_ADMIN_PASSWORD"),
         session_ttl_hours=_int_env("VMLAB_SESSION_TTL_HOURS", 24),
+        login_max_failures=_int_env("VMLAB_LOGIN_MAX_FAILURES", 5),
+        login_lockout_seconds=_int_env("VMLAB_LOGIN_LOCKOUT_SECONDS", 300),
+        log_retention_days=_int_env("VMLAB_LOG_RETENTION_DAYS", 30, minimum=0),
+        maintenance_interval_seconds=_int_env("VMLAB_MAINTENANCE_INTERVAL_SECONDS", 3600, minimum=60),
         pipeline_workers=_int_env("VMLAB_PIPELINE_WORKERS", 2),
         external_command_timeout_seconds=_int_env("VMLAB_EXTERNAL_COMMAND_TIMEOUT_SECONDS", 3600),
         external_command_log_max_chars=_int_env("VMLAB_EXTERNAL_COMMAND_LOG_MAX_CHARS", 20000),

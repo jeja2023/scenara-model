@@ -26,6 +26,9 @@ class MetadataStore:
     def __init__(self, path: str | Path = ":memory:") -> None:
         self.path = path
         self._lock = threading.RLock()
+        # 每线程一条长连接；_connections 仅用于 close() 时统一回收。
+        self._local = threading.local()
+        self._connections: list[sqlite3.Connection] = []
         if str(path) != ":memory:":
             self.path = Path(path)
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -253,23 +256,43 @@ class MetadataStore:
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA busy_timeout=30000")
         if in_memory:
-            self._configure_journal_mode(connection, ("MEMORY",))
+            # 内存库没有崩溃恢复语义，MEMORY 是唯一适用的模式。
+            applied = self._configure_journal_mode(connection, ("MEMORY",))
         elif use_wal:
-            self._configure_journal_mode(connection, ("MEMORY", "WAL", "DELETE", "OFF"))
+            # 顺序必须最安全优先：MEMORY 在文件库上总会成功，一旦排在前面就永远
+            # 轮不到 WAL，而 MEMORY 模式下进程崩溃极可能损坏整个数据库文件。
+            applied = self._configure_journal_mode(connection, ("WAL", "TRUNCATE", "DELETE"))
         else:
-            self._configure_journal_mode(connection, ("MEMORY", "DELETE", "OFF"))
+            applied = self._configure_journal_mode(connection, ("TRUNCATE", "DELETE"))
+        # synchronous=NORMAL 只在 WAL 下既安全又快；回滚日志模式下降级会丢失最近
+        # 提交的事务，因此保持默认的 FULL。
+        target = "NORMAL" if applied == "WAL" else "FULL"
         try:
-            connection.execute("PRAGMA synchronous=NORMAL")
+            connection.execute(f"PRAGMA synchronous={target}")
         except sqlite3.DatabaseError:
             pass
 
-    def _configure_journal_mode(self, connection: sqlite3.Connection, modes: tuple[str, ...]) -> None:
+    def _configure_journal_mode(self, connection: sqlite3.Connection, modes: tuple[str, ...]) -> str:
+        """按顺序尝试并返回真正生效的 journal mode。
+
+        PRAGMA journal_mode 失败时通常不抛异常，而是返回当前仍然生效的模式
+        （例如网络文件系统上 WAL 会静默回落），因此必须比对返回值而非只看异常。
+        """
         for mode in modes:
             try:
-                connection.execute(f"PRAGMA journal_mode={mode}").fetchone()
-                return
+                row = connection.execute(f"PRAGMA journal_mode={mode}").fetchone()
             except sqlite3.DatabaseError:
                 continue
+            applied = str(row[0]).upper() if row else ""
+            if applied == mode.upper():
+                return applied
+        return ""
+
+    def journal_mode(self) -> str:
+        """返回当前生效的 journal mode，供健康检查与回归测试断言。"""
+        with self.connect() as connection:
+            row = connection.execute("PRAGMA journal_mode").fetchone()
+        return str(row[0]).upper() if row else ""
 
     def _database_family(self, path: Path) -> list[Path]:
         return [Path(str(path) + suffix) for suffix in ("", "-wal", "-shm", "-journal")]
@@ -314,28 +337,63 @@ class MetadataStore:
             self._memory_connection = connection
         return connection
 
+    def _open_file_connection(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.path, timeout=30.0)
+        try:
+            self._configure_connection(connection, in_memory=False, use_wal=True)
+        except sqlite3.DatabaseError:
+            connection.close()
+            if not self._reset_empty_database_files():
+                raise
+            connection = sqlite3.connect(self.path, timeout=30.0)
+            self._configure_connection(connection, in_memory=False, use_wal=False)
+        return connection
+
+    def _thread_connection(self) -> sqlite3.Connection:
+        """返回当前线程的长连接，不存在则建立。
+
+        原实现每次操作都 connect/close 并用进程级锁串行化：训练期间的取消轮询
+        与逐行日志写入会产生每秒数百次建连，把所有 HTTP 请求一起拖住。
+        WAL + busy_timeout 已经提供并发读和写排队，不需要额外的进程级锁。
+        """
+        connection = getattr(self._local, "connection", None)
+        if connection is not None:
+            return connection
+        connection = self._open_file_connection()
+        self._local.connection = connection
+        with self._lock:
+            self._connections.append(connection)
+        return connection
+
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        with self._lock:
-            shared = self._shared_connection
-            if shared is not None:
+        shared = self._shared_connection
+        if shared is not None:
+            # 内存库跨线程共享同一条连接，必须串行化。
+            with self._lock:
                 yield shared
                 shared.commit()
-                return
-            connection = sqlite3.connect(self.path, timeout=30.0)
+            return
+        connection = self._thread_connection()
+        try:
+            yield connection
+            connection.commit()
+        except BaseException:
+            # 连接现在跨操作复用，不回滚会把失败事务的状态带给下一次操作。
+            connection.rollback()
+            raise
+
+    def close(self) -> None:
+        """关闭全部已打开连接；进程退出或测试清理时调用。"""
+        with self._lock:
+            connections = list(self._connections)
+            self._connections.clear()
+        for connection in connections:
             try:
-                self._configure_connection(connection, in_memory=False, use_wal=True)
-            except sqlite3.DatabaseError:
                 connection.close()
-                if not self._reset_empty_database_files():
-                    raise
-                connection = sqlite3.connect(self.path, timeout=30.0)
-                self._configure_connection(connection, in_memory=False, use_wal=False)
-            try:
-                yield connection
-                connection.commit()
-            finally:
-                connection.close()
+            except sqlite3.Error:
+                pass
+        self._local = threading.local()
 
     def upsert_experiment(self, payload: dict[str, Any]) -> dict[str, Any]:
         metrics = payload.get("metrics") or {}
@@ -567,16 +625,46 @@ class MetadataStore:
         message: str,
         detail: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        payload = detail or {}
+        created_at = utc_now_iso()
         with self.connect() as connection:
             cursor = connection.execute(
                 """
-                INSERT INTO pipeline_job_logs (job_id, stream, message, detail_json)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO pipeline_job_logs (job_id, stream, message, detail_json, created_at)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (job_id, stream, message, json.dumps(detail or {}, ensure_ascii=False)),
+                (job_id, stream, message, json.dumps(payload, ensure_ascii=False), created_at),
             )
             log_id = int(cursor.lastrowid)
-        return self.get_pipeline_job_log(log_id)
+        # 不回读：这是训练期间最热的写路径，多一次 SELECT 会让开销翻倍。
+        return {
+            "id": log_id,
+            "job_id": job_id,
+            "stream": stream,
+            "message": message,
+            "detail": payload,
+            "created_at": created_at,
+        }
+
+    def record_pipeline_job_logs(self, job_id: int, entries: list[tuple[str, str]]) -> int:
+        """批量写入 (stream, message) 日志行，单事务提交。
+
+        外部命令输出逐行到达，逐行独立事务会把写放大到每秒数百次；
+        调用方应缓冲后批量落库。
+        """
+        if not entries:
+            return 0
+        created_at = utc_now_iso()
+        with self.connect() as connection:
+            for stream, message in entries:
+                connection.execute(
+                    """
+                    INSERT INTO pipeline_job_logs (job_id, stream, message, detail_json, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (job_id, stream, message, "{}", created_at),
+                )
+        return len(entries)
 
     def list_pipeline_job_logs(
         self,
