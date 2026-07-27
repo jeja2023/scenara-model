@@ -55,13 +55,44 @@ def write_json(path: str | Path, data: Any) -> None:
         handle.write("\n")
 
 
-def sha256_file(path: str | Path, chunk_size: int = 1024 * 1024) -> str:
-    digest = hashlib.sha256()
+# 摘要缓存：键为路径，值为 (size, mtime_ns, digest)。
+_DIGEST_CACHE: dict[str, tuple[int, int, str]] = {}
+_DIGEST_CACHE_LOCK = threading.Lock()
+_DIGEST_CACHE_MAX = 512
+
+
+def sha256_file(path: str | Path, chunk_size: int = 1024 * 1024, *, use_cache: bool = True) -> str:
+    """计算文件 sha256，按 (size, mtime_ns) 缓存。
+
+    模型包校验对每个 ONNX 都要求摘要，而管理台首页每次刷新都会触发全量扫描；
+    没有缓存时几百 MB 的模型会被反复整文件读取，扫描接口同步阻塞 HTTP worker。
+
+    刚写入或复制出来的文件必须传 use_cache=False：shutil.copy2 会保留源文件
+    mtime，同一路径先后放入 size 与 mtime 相同的两个文件时缓存会命中错误结果。
+    """
     resolved = as_path(path)
+    key = str(resolved)
+    try:
+        stat = resolved.stat()
+        signature: tuple[int, int] | None = (stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        signature = None
+    if use_cache and signature is not None:
+        with _DIGEST_CACHE_LOCK:
+            cached = _DIGEST_CACHE.get(key)
+        if cached is not None and cached[:2] == signature:
+            return cached[2]
+    digest = hashlib.sha256()
     with resolved.open("rb") as handle:
         for chunk in iter(lambda: handle.read(chunk_size), b""):
             digest.update(chunk)
-    return digest.hexdigest()
+    value = digest.hexdigest()
+    if signature is not None:
+        with _DIGEST_CACHE_LOCK:
+            if len(_DIGEST_CACHE) >= _DIGEST_CACHE_MAX:
+                _DIGEST_CACHE.clear()
+            _DIGEST_CACHE[key] = (signature[0], signature[1], value)
+    return value
 
 
 def ensure_dir(path: str | Path) -> Path:

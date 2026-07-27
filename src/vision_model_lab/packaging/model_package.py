@@ -403,7 +403,8 @@ def create_model_package(
         raise FileExistsError(f"Model already exists: {destination_model}")
     shutil.copy2(source_model, destination_model)
 
-    digest = sha256_file(destination_model)
+    # copy2 保留源文件 mtime，(size, mtime) 缓存键在这里会命中上一个模型的摘要。
+    digest = sha256_file(destination_model, use_cache=False)
     stem = destination_model.stem
     destination_labels = destination_dir / f"{stem}.labels.txt"
     if labels_file:
