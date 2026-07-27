@@ -4,7 +4,6 @@ from pathlib import Path
 
 from vision_model_lab.packaging.model_package import create_model_package, validate_model_package
 
-
 SAMPLE_JPEG_BYTES = bytes.fromhex("ffd8ffe000104a46494600010101000100010000ffd9")
 
 

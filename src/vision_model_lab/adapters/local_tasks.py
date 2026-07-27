@@ -15,7 +15,6 @@ from vision_model_lab.adapters.base import AdapterResult
 from vision_model_lab.export.onnx_checks import check_onnx_loadable
 from vision_model_lab.utils import ensure_dir, read_yaml, write_json
 
-
 LogLineSink = Callable[[str, str], None]
 """外部命令逐行日志回调：(stream, line)。"""
 

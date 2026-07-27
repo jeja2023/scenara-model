@@ -107,6 +107,7 @@ def test_alembic_upgrade_supports_plain_sqlite_path_and_creates_base_tables(work
 
     with sqlite3.connect(database) as connection:
         tables = {row[0] for row in connection.execute("select name from sqlite_master where type='table'")}
+        pipeline_job_columns = {row[1] for row in connection.execute("pragma table_info(pipeline_jobs)")}
 
     assert {
         "experiments",
@@ -121,6 +122,7 @@ def test_alembic_upgrade_supports_plain_sqlite_path_and_creates_base_tables(work
         "release_approvals",
         "deployment_rollouts",
     } <= tables
+    assert {"worker_id", "heartbeat_at"} <= pipeline_job_columns
 
 
 def test_terminal_job_status_cannot_be_reverted_by_cancel() -> None:
@@ -174,6 +176,37 @@ def test_recover_orphaned_jobs_marks_running_as_failed() -> None:
     assert store.get_pipeline_job(int(running_job["id"]))["status"] == "failed"
     assert store.get_pipeline_job(int(queued_job["id"]))["status"] == "queued"
     assert [job["id"] for job in store.list_queued_pipeline_jobs()] == [queued_job["id"]]
+
+
+def test_recover_orphaned_jobs_spares_other_live_workers() -> None:
+    store = MetadataStore(":memory:")
+    mine = int(store.create_pipeline_job("configs/a.yml", {})["id"])
+    theirs = int(store.create_pipeline_job("configs/b.yml", {})["id"])
+    store.claim_pipeline_job(mine, "host-a:1")
+    store.claim_pipeline_job(theirs, "host-b:2")
+    store.heartbeat_pipeline_job(theirs, "host-b:2")
+
+    recovered = store.recover_orphaned_jobs(worker_id="host-a:1")
+
+    assert [int(job["id"]) for job in recovered] == [mine]
+    assert store.get_pipeline_job(mine)["status"] == "failed"
+    assert store.get_pipeline_job(theirs)["status"] == "running"
+
+
+def test_purge_old_records_applies_retention_window() -> None:
+    store = MetadataStore(":memory:")
+    job = store.create_pipeline_job("configs/experiments/example.yml", {})
+    store.record_pipeline_job_log(int(job["id"]), "stdout", "expired")
+    store.record_audit_event(actor="test", action="expired", target="record", detail={})
+    with store.connect() as connection:
+        connection.execute("UPDATE pipeline_job_logs SET created_at = '2000-01-01T00:00:00.000Z'")
+        connection.execute("UPDATE audit_events SET created_at = '2000-01-01T00:00:00.000Z'")
+
+    deleted = store.purge_old_records(retention_days=30)
+
+    assert deleted == {"pipeline_job_logs": 1, "audit_events": 1}
+    assert store.list_pipeline_job_logs(int(job["id"])) == []
+    assert store.list_audit_events() == []
 
 
 def test_pipeline_job_logs_since_id_and_tail() -> None:

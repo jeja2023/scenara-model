@@ -4,7 +4,6 @@ import re
 import subprocess
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 # 允许出现在 .env 中的非机密占位值。

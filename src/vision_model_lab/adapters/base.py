@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-
 LogLineSink = Callable[[str, str], None]
 """外部命令逐行日志回调：(stream, line)。"""
 

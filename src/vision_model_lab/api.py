@@ -8,11 +8,12 @@ import secrets
 import socket
 import threading
 import time
+from collections.abc import AsyncIterator, Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, AsyncIterator, Awaitable, Callable
+from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,14 +26,13 @@ from vision_model_lab.adapters.registry import list_adapters
 from vision_model_lab.auth import generate_session_token, hash_password, token_digest, verify_password
 from vision_model_lab.contracts import validate_models_fragment, validate_release_decision
 from vision_model_lab.datasets.manifest import validate_manifest
+from vision_model_lab.naming import parse_artifact_name
 from vision_model_lab.object_store import object_store_from_settings
 from vision_model_lab.packaging.model_package import validate_model_package
-from vision_model_lab.naming import parse_artifact_name
 from vision_model_lab.pipeline import collect_pipeline_artifacts, create_package_from_experiment, load_error_cases, run_experiment_pipeline
 from vision_model_lab.settings import load_settings
 from vision_model_lab.storage import metadata_store_from_uri
 from vision_model_lab.utils import read_yaml
-
 
 logger = logging.getLogger("vision_model_lab.api")
 
@@ -132,7 +132,7 @@ def _bootstrap_admin_user() -> str | None:
 def _recover_jobs_on_startup() -> None:
     """服务重启后回收孤儿任务：进程内队列不会幸存，DB 状态必须收敛。"""
     try:
-        orphans = STORE.recover_orphaned_jobs()
+        orphans = STORE.recover_orphaned_jobs(worker_id=WORKER_ID)
         for job in orphans:
             STORE.record_pipeline_job_log(int(job["id"]), "job", "orphaned by service restart")
             STORE.record_audit_event(
@@ -154,6 +154,20 @@ def _recover_jobs_on_startup() -> None:
         logger.exception("pipeline job reconcile failed on startup")
 
 
+async def _maintenance_loop() -> None:
+    """周期清理过期会话、任务日志与审计事件。"""
+    interval = SETTINGS.maintenance_interval_seconds
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await asyncio.to_thread(STORE.purge_expired_auth_sessions)
+            await asyncio.to_thread(STORE.purge_old_records, retention_days=SETTINGS.log_retention_days)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - 维护失败不应影响服务
+            logger.exception("periodic maintenance failed")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     _bootstrap_admin_user()
@@ -162,8 +176,15 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     except Exception:  # noqa: BLE001 - 清理失败不影响启动
         logger.exception("expired auth session purge failed")
     _recover_jobs_on_startup()
-    yield
-    EXECUTOR.shutdown(wait=False, cancel_futures=True)
+    maintenance = asyncio.create_task(_maintenance_loop())
+    try:
+        yield
+    finally:
+        maintenance.cancel()
+        with suppress(asyncio.CancelledError):
+            await maintenance
+        EXECUTOR.shutdown(wait=False, cancel_futures=True)
+        STORE.close()
 
 
 app = FastAPI(
@@ -320,8 +341,10 @@ class LoginRequest(ApiModel):
     password: str = Field(min_length=1, max_length=512)
 
 
-def require_auth(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-    identity = _resolve_bearer_identity(authorization)
+def require_auth(request: Request) -> dict[str, Any]:
+    identity = getattr(request.state, "identity", None)
+    if identity is None:
+        identity = _resolve_bearer_identity(request.headers.get("Authorization"))
     if identity is None:
         raise HTTPException(status_code=401, detail="Unauthorized")
     return identity
@@ -332,11 +355,14 @@ async def auth_middleware(request: Request, call_next: Callable[[Request], Await
     """全局认证：除登录接口外，全部 /api 路径都要求有效令牌。
 
     /health 与前端静态资源保持公开（容器健康检查、登录页本身依赖它们）。
+    解析结果缓存到 request.state，供路由级 Depends(require_auth) 复用。
     """
     path = request.url.path
     if path.startswith("/api") and path not in PUBLIC_API_PATHS and request.method != "OPTIONS":
-        if _resolve_bearer_identity(request.headers.get("Authorization")) is None:
+        identity = _resolve_bearer_identity(request.headers.get("Authorization"))
+        if identity is None:
             return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        request.state.identity = identity
     return await call_next(request)
 
 
@@ -377,6 +403,70 @@ def _record_pipeline_artifacts(report: dict[str, Any], *, job_id: int | None = N
     return indexed
 
 
+class _JobLogBuffer:
+    """外部命令日志缓冲：按条数或时间批量落库。"""
+
+    def __init__(self, job_id: int, *, max_entries: int = 200, max_interval: float = 1.0) -> None:
+        self._job_id = job_id
+        self._max_entries = max_entries
+        self._max_interval = max_interval
+        self._lock = threading.Lock()
+        self._pending: list[tuple[str, str]] = []
+        self._last_flush = time.monotonic()
+
+    def add(self, stream: str, line: str) -> None:
+        with self._lock:
+            self._pending.append((stream, line))
+            due = len(self._pending) >= self._max_entries or (time.monotonic() - self._last_flush) >= self._max_interval
+            if not due:
+                return
+            entries, self._pending = self._pending, []
+            self._last_flush = time.monotonic()
+        self._write(entries)
+
+    def flush(self) -> None:
+        with self._lock:
+            entries, self._pending = self._pending, []
+            self._last_flush = time.monotonic()
+        self._write(entries)
+
+    def _write(self, entries: list[tuple[str, str]]) -> None:
+        if not entries:
+            return
+        try:
+            STORE.record_pipeline_job_logs(self._job_id, entries)
+        except Exception:  # noqa: BLE001 - 日志落库失败不应中断训练任务
+            logger.exception("failed to persist %d job log line(s) for job %s", len(entries), self._job_id)
+
+
+class _CancelCheck:
+    """将高频取消轮询节流为秒级查库，并在同一路径续任务心跳。"""
+
+    def __init__(self, job_id: int, *, interval: float = 3.0) -> None:
+        self._job_id = job_id
+        self._interval = interval
+        self._checked_at = 0.0
+        self._cancelled = False
+
+    def __call__(self) -> bool:
+        if self._cancelled:
+            return True
+        now = time.monotonic()
+        if now - self._checked_at < self._interval:
+            return False
+        self._checked_at = now
+        try:
+            job = STORE.get_pipeline_job(self._job_id)
+        except KeyError:
+            return False
+        try:
+            STORE.heartbeat_pipeline_job(self._job_id, WORKER_ID)
+        except Exception:  # noqa: BLE001 - 心跳失败不应中断任务
+            logger.debug("heartbeat failed for job %s", self._job_id, exc_info=True)
+        self._cancelled = job["status"] == "cancellation_requested"
+        return self._cancelled
+
+
 def _pipeline_job_detail(job_id: int) -> dict[str, Any]:
     job = STORE.get_pipeline_job(job_id)
     job["logs"] = STORE.list_pipeline_job_logs(job_id)
@@ -385,21 +475,19 @@ def _pipeline_job_detail(job_id: int) -> dict[str, Any]:
 
 
 def _run_pipeline_job(job_id: int, payload: dict[str, Any]) -> None:
+    log_buffer = _JobLogBuffer(job_id)
+
     def event_sink(stage: str, message: str, detail: dict[str, Any]) -> None:
+        log_buffer.flush()
         STORE.record_pipeline_job_log(job_id, stage, message, detail)
 
     def log_sink(stream: str, line: str) -> None:
-        # 外部命令 stdout/stderr 逐行入库，训练期间即可实时查看进度。
-        STORE.record_pipeline_job_log(job_id, stream, line)
+        log_buffer.add(stream, line)
 
-    def should_cancel() -> bool:
-        try:
-            return STORE.get_pipeline_job(job_id)["status"] == "cancellation_requested"
-        except KeyError:
-            return False
+    should_cancel = _CancelCheck(job_id)
 
     try:
-        job = STORE.mark_pipeline_job_running(job_id)
+        job = STORE.claim_pipeline_job(job_id, WORKER_ID)
         if job["status"] == "cancelled":
             STORE.record_pipeline_job_log(job_id, "job", "cancelled before start")
             return
@@ -444,6 +532,8 @@ def _run_pipeline_job(job_id: int, payload: dict[str, Any]) -> None:
         STORE.record_pipeline_job_log(job_id, "job", "failed", {"error": str(exc)})
         STORE.fail_pipeline_job(job_id, str(exc))
         STORE.record_audit_event(actor="api", action="pipeline.job.failed", target=str(job_id), detail={"error": str(exc)})
+    finally:
+        log_buffer.flush()
 
 def _queue_pipeline_job(payload: dict[str, Any]) -> dict[str, Any]:
     # 同一配置的并发运行共享输出目录，会互相覆盖产物，必须拒绝。
@@ -463,6 +553,14 @@ def _queue_pipeline_job(payload: dict[str, Any]) -> dict[str, Any]:
     return job
 
 
+def _metadata_journal_mode() -> str:
+    if SETTINGS.metadata_db == ":memory:":
+        return "memory"
+    if SETTINGS.metadata_db.startswith(("postgresql://", "postgres://")):
+        return "postgresql"
+    return STORE.journal_mode()
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {
@@ -471,6 +569,7 @@ def health() -> dict[str, Any]:
         "workspace": str(WORKSPACE_ROOT),
         "metadata_db": SETTINGS.metadata_db,
         "metadata_persistent": SETTINGS.metadata_db != ":memory:",
+        "metadata_journal_mode": _metadata_journal_mode(),
         "serve_frontend": SETTINGS.serve_frontend and SETTINGS.frontend_dist.exists(),
         "storage_backend": SETTINGS.storage_backend,
         "storage_uri": SETTINGS.storage_uri,
@@ -508,7 +607,7 @@ def login(request: LoginRequest, http_request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     LOGIN_THROTTLE.reset(throttle_key)
     token = generate_session_token()
-    expires_at = (datetime.now(timezone.utc) + timedelta(hours=SETTINGS.session_ttl_hours)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    expires_at = (datetime.now(UTC) + timedelta(hours=SETTINGS.session_ttl_hours)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     STORE.create_auth_session(token_digest(token), int(user["id"]), user["username"], expires_at)
     STORE.record_audit_event(actor=user["username"], action="auth.login", target=user["username"], detail={})
     return {"token": token, "username": user["username"], "role": user["role"], "expires_at": expires_at}

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
-from typing import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 import vision_model_lab.api as api
 from vision_model_lab.storage import MetadataStore
 from vision_model_lab.utils import write_yaml
-
 
 TEST_ADMIN_PASSWORD = "test-admin-password"
 
@@ -52,6 +51,74 @@ def test_health_endpoint() -> None:
     assert body["status"] == "ok"
     assert "workspace" in body
     assert "metadata_db" in body
+    assert "metadata_journal_mode" in body
+
+
+def test_health_does_not_run_sqlite_pragma_for_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(api, "SETTINGS", replace(api.SETTINGS, metadata_db="postgresql://localhost/vmlab"))
+
+    def unexpected_journal_mode() -> str:
+        raise AssertionError("PostgreSQL health checks must not execute SQLite PRAGMA statements")
+
+    monkeypatch.setattr(api.STORE, "journal_mode", unexpected_journal_mode)
+
+    assert api.health()["metadata_journal_mode"] == "postgresql"
+
+
+def test_auth_dependency_reuses_middleware_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _client()
+    original = api.STORE.get_auth_session
+    calls = 0
+
+    def counted(token_hash: str) -> dict[str, object] | None:
+        nonlocal calls
+        calls += 1
+        return original(token_hash)
+
+    monkeypatch.setattr(api.STORE, "get_auth_session", counted)
+
+    response = client.get("/api/auth/me")
+
+    assert response.status_code == 200
+    assert calls == 1
+
+
+def test_cancel_check_is_throttled(monkeypatch: pytest.MonkeyPatch) -> None:
+    job = api.STORE.create_pipeline_job("configs/experiments/example.yml", {})
+    original = api.STORE.get_pipeline_job
+    calls = 0
+
+    def counted(job_id: int) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return original(job_id)
+
+    monkeypatch.setattr(api.STORE, "get_pipeline_job", counted)
+    should_cancel = api._CancelCheck(int(job["id"]), interval=60.0)
+
+    assert [should_cancel() for _ in range(50)] == [False] * 50
+    assert calls == 1
+
+
+def test_job_log_buffer_flushes_in_one_batch(monkeypatch: pytest.MonkeyPatch) -> None:
+    job = api.STORE.create_pipeline_job("configs/experiments/example.yml", {})
+    original = api.STORE.record_pipeline_job_logs
+    batches: list[list[tuple[str, str]]] = []
+
+    def counted(job_id: int, entries: list[tuple[str, str]]) -> int:
+        batches.append(list(entries))
+        return original(job_id, entries)
+
+    monkeypatch.setattr(api.STORE, "record_pipeline_job_logs", counted)
+    buffer = api._JobLogBuffer(int(job["id"]), max_entries=10, max_interval=60.0)
+
+    buffer.add("stdout", "one")
+    buffer.add("stderr", "two")
+    assert batches == []
+
+    buffer.flush()
+
+    assert batches == [[("stdout", "one"), ("stderr", "two")]]
 
 
 def test_manifest_validation_endpoint() -> None:

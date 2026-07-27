@@ -7,7 +7,6 @@ from typing import Any
 from vision_model_lab.naming import is_semver
 from vision_model_lab.utils import read_jsonl
 
-
 ALLOWED_SPLITS = {"train", "val", "test", "regression", "edge"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 REQUIRED_FIELDS = {"image", "split", "source", "dataset_version"}
@@ -60,7 +59,7 @@ def validate_manifest(
 
     split_counts: dict[str, int] = {}
     seen_images: set[str] = set()
-    allowed_label_set = {label for label in (allowed_labels or [])}
+    allowed_label_set = set(allowed_labels or [])
 
     for index, row in enumerate(rows, start=1):
         missing = sorted(REQUIRED_FIELDS - set(row))

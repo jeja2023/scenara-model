@@ -6,8 +6,8 @@ import os
 import sys
 from pathlib import Path
 
-from vision_model_lab.datasets.manifest import validate_manifest
 from vision_model_lab.contracts import validate_models_fragment, validate_release_decision
+from vision_model_lab.datasets.manifest import validate_manifest
 from vision_model_lab.packaging.model_package import create_model_package, validate_model_package
 from vision_model_lab.settings import load_settings
 from vision_model_lab.storage import metadata_store_from_uri

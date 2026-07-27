@@ -17,6 +17,8 @@ python scripts/serve_api.py --host 127.0.0.1 --port 8080 --metadata-db artifacts
 ```powershell
 $env:PYTHONDONTWRITEBYTECODE="1"
 vmlab storage migrate
+python scripts/check_versions.py
+python -m ruff check src scripts tests migrations
 python -m pytest
 python scripts/acceptance_check.py --skip-pytest
 cd frontend
@@ -57,17 +59,19 @@ python scripts/runtime_check.py --base-url http://127.0.0.1:8080
 - `/health` 不通：确认进程是否监听 8080，或换端口启动。
 - 前端空白：重新执行 `npm run build`，确认 `frontend/dist/assets` 存在，然后重启 API。
 - SQLite 写入失败：使用 `--metadata-db :memory:` 验证是否为磁盘权限问题，再切换到可写路径。
+- 多实例任务被意外回收：检查 `/health` 后端类型和 `pipeline_jobs.worker_id` / `heartbeat_at`，确认各实例时钟同步且心跳未超过 120 秒。
+- 日志增长过快：调整 `VMLAB_LOG_RETENTION_DAYS`，并确认周期维护没有持续报错；设为 `0` 会禁用历史日志清理。
 - Docker 构建失败：确认 Docker Desktop 可用；当前默认基础镜像已切到已验证镜像源，仍可通过 build args 覆盖为 Docker Hub 或企业镜像源。
 - 国内或内网环境可用 `--build-arg NODE_IMAGE=... --build-arg PYTHON_IMAGE=...` 指向企业镜像源；已验证的示例为华为云镜像源下的 Node 22 和 Python 3.12 slim。
 
 ## 2026-07 安全与任务运行补充
 
 - 前端静态文件回退会校验路径必须停留在 `frontend/dist` 内，禁止通过编码后的 `..` 读取工作区文件。
-- 写接口仍建议设置 `VMLAB_AUTH_TOKEN`，生产环境必须通过网关或服务配置注入强 token。
+- 全部 `/api` 接口（登录除外）均要求会话或静态令牌；生产环境必须配置强管理员口令，并在网关层补统一限流与访问控制。
 - 流水线支持异步 job：`POST /api/pipelines/run` 传入 `{"async": true}` 后，可通过 `/api/pipelines/jobs` 查询状态，并可对 job 执行 cancel/retry。
 - 外部训练命令默认只允许 argv list；字符串 shell 命令默认禁用。确需兼容旧命令时设置 `VMLAB_ALLOW_SHELL_COMMANDS=true`，并限制 `VMLAB_EXTERNAL_COMMAND_TIMEOUT_SECONDS` 和日志长度。
 - 本地对象存储使用 `VMLAB_STORAGE_URI`，默认 `artifacts/object-store`；对象 key 会校验不能逃逸存储根目录。
-- SQLite 使用 `MEMORY -> WAL -> DELETE -> OFF` 的 journal mode 回退、busy timeout 和线程锁；多实例或多人生产部署仍建议迁移 PostgreSQL。
+- SQLite 使用 WAL journal mode（回落顺序 `WAL -> TRUNCATE -> DELETE`，并校验 PRAGMA 实际生效值）、busy timeout 和每线程长连接；多实例或多人生产部署仍建议迁移 PostgreSQL。
 - 上传入口受 `VMLAB_MAX_UPLOAD_BYTES` 限制，超限文件会被拒绝并清理部分写入。
 ## Python 环境隔离建议
 
@@ -109,3 +113,13 @@ python -m pip check
 - Alembic 使用普通 SQLite 文件路径时无需手动拼接 `sqlite:///`；正式环境仍建议显式配置 PostgreSQL DSN。
 - 大模型目录扫描受 `VMLAB_MAX_PACKAGE_SCAN_FILES` 保护，触顶时应收窄扫描目录或提高上限。
 - 管理台会显示“排队中”“取消中”“已取消”等中文状态，可用 job 详情确认取消时间、阶段、原因和保留产物。
+
+## 0.7.0 运维补充
+
+- 升级前备份元数据数据库并执行 `vmlab storage migrate` 或 `python -m alembic upgrade head`，确认 `pipeline_jobs` 已包含 `worker_id` 与 `heartbeat_at`。
+- `/health` 的 `version` 应为 `0.7.0`；SQLite 部署的 `metadata_journal_mode` 应优先显示 `WAL`，PostgreSQL 部署应显示 `postgresql`。
+- 外部命令日志批量落库后，管理台最新日志最多可能延迟约 1 秒；任务结束、失败或阶段切换时会强制落完缓冲。
+- 取消请求默认最多约 3 秒被 worker 观察到；该延迟用于把训练期间的取消查库压力降低一个数量级以上。
+- 生产环境设置 `VMLAB_ADMIN_PASSWORD`、`VMLAB_LOG_RETENTION_DAYS` 和 `VMLAB_MAINTENANCE_INTERVAL_SECONDS`；不要依赖自动生成口令进行常态部署。
+- PostgreSQL + MinIO 使用 `docker-compose.postgres.yml` 叠加文件启动；镜像通过 `VMLAB_EXTRAS=postgres,s3` 安装对应驱动。
+- 完整发布和升级说明见 `docs/RELEASE_0.7.0.md`。

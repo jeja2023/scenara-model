@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import replace
-from typing import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 import vision_model_lab.api as api
 from vision_model_lab.auth import hash_password, token_digest, verify_password
 from vision_model_lab.storage import MetadataStore
-
 
 TEST_ADMIN_PASSWORD = "test-admin-password"
 
@@ -180,7 +179,7 @@ def test_bootstrap_generates_password_when_not_configured(monkeypatch: pytest.Mo
 
 
 def test_expired_session_rejected() -> None:
-    client = _client()
+    _client()
     user = api.STORE.get_user_by_username("admin")
     api.STORE.create_auth_session("expired-hash", int(user["id"]), "admin", "2020-01-01T00:00:00.000Z")
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from vision_model_lab.adapters.registry import list_adapters, run_stage
 from vision_model_lab.pipeline import run_experiment_pipeline
 from vision_model_lab.utils import write_yaml

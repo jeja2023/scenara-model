@@ -10,7 +10,6 @@ from vision_model_lab.model_card import ModelCardIssue, validate_model_card
 from vision_model_lab.naming import parse_artifact_name
 from vision_model_lab.utils import ensure_dir, non_empty_lines, sha256_file, unique_preserve_order, write_yaml
 
-
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 

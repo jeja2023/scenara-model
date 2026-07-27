@@ -1,0 +1,18 @@
+# Upper bounds for dependency families validated by this repository.
+# Install with: pip install -e ".[dev]" -c constraints.txt
+fastapi<1.0
+pydantic<3.0
+PyYAML<7.0
+onnx<2.0
+onnxruntime<2.0
+python-multipart<1.0
+uvicorn<1.0
+httpx<1.0
+pytest<10.0
+pytest-asyncio<2.0
+ruff<1.0
+boto3<2.0
+psycopg<4.0
+psycopg-pool<4.0
+alembic<2.0
+SQLAlchemy<3.0

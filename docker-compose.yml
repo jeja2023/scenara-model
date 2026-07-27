@@ -1,6 +1,9 @@
 services:
   vision-model-lab:
-    build: .
+    build:
+      context: .
+      args:
+        VMLAB_EXTRAS: postgres,s3
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -10,11 +13,11 @@ services:
         required: false
     environment:
       VMLAB_WORKSPACE: /app
-      VMLAB_METADATA_DB: artifacts/vision_model_lab.sqlite3
+      VMLAB_METADATA_DB: ${VMLAB_METADATA_DB:-artifacts/vision_model_lab.sqlite3}
       VMLAB_CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173
       VMLAB_SERVE_FRONTEND: "true"
-      VMLAB_STORAGE_BACKEND: local
-      VMLAB_STORAGE_URI: artifacts/object-store
+      VMLAB_STORAGE_BACKEND: ${VMLAB_STORAGE_BACKEND:-local}
+      VMLAB_STORAGE_URI: ${VMLAB_STORAGE_URI:-artifacts/object-store}
       VMLAB_MAX_PACKAGE_SCAN_FILES: "500"
       VMLAB_MAX_UPLOAD_BYTES: "524288000"
       VMLAB_PIPELINE_WORKERS: "2"

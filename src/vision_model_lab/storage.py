@@ -5,13 +5,13 @@ import os
 import re
 import sqlite3
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
-
-SCHEMA_VERSION = "20260703_040_mlops_foundation"
+SCHEMA_VERSION = "20260726_060_job_heartbeat"
 
 # 流水线任务终态：一旦进入不可回退。
 TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
@@ -19,7 +19,7 @@ TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
 
 def utc_now_iso() -> str:
     """统一时间戳格式：带 Z 后缀的毫秒级 ISO8601，SQLite/PostgreSQL 两后端输出一致。"""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 class MetadataStore:
@@ -110,6 +110,8 @@ class MetadataStore:
                 started_at TEXT,
                 completed_at TEXT,
                 cancelled_at TEXT,
+                worker_id TEXT,
+                heartbeat_at TEXT,
                 updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             )
             """
@@ -240,6 +242,7 @@ class MetadataStore:
             )
             """
         )
+        self._ensure_pipeline_job_columns(connection)
         connection.execute("CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON auth_sessions(expires_at)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_status ON pipeline_jobs(status)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at)")
@@ -250,6 +253,12 @@ class MetadataStore:
         connection.execute("CREATE INDEX IF NOT EXISTS idx_release_approvals_model_id ON release_approvals(model_id)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_deployment_rollouts_model_id ON deployment_rollouts(model_id)")
         connection.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (?)", (SCHEMA_VERSION,))
+
+    def _ensure_pipeline_job_columns(self, connection: Any) -> None:
+        existing = {row[1] for row in connection.execute("PRAGMA table_info(pipeline_jobs)").fetchall()}
+        for column in ("worker_id", "heartbeat_at"):
+            if column not in existing:
+                connection.execute(f"ALTER TABLE pipeline_jobs ADD COLUMN {column} TEXT")
 
     def _configure_connection(self, connection: sqlite3.Connection, *, in_memory: bool, use_wal: bool = True) -> None:
         connection.row_factory = sqlite3.Row
@@ -509,18 +518,33 @@ class MetadataStore:
             job_id = int(cursor.lastrowid)
         return self.get_pipeline_job(job_id)
 
-    def mark_pipeline_job_running(self, job_id: int) -> dict[str, Any]:
+    def claim_pipeline_job(self, job_id: int, worker_id: str) -> dict[str, Any]:
         now = utc_now_iso()
         with self.connect() as connection:
             connection.execute(
                 """
                 UPDATE pipeline_jobs
-                SET status='running', started_at=?, updated_at=?
+                SET status='running', started_at=?, updated_at=?, worker_id=?, heartbeat_at=?
                 WHERE id = ? AND status = 'queued'
                 """,
-                (now, now, job_id),
+                (now, now, worker_id or None, now, job_id),
             )
         return self.get_pipeline_job(job_id)
+
+    def heartbeat_pipeline_job(self, job_id: int, worker_id: str) -> None:
+        now = utc_now_iso()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE pipeline_jobs
+                SET heartbeat_at=?, updated_at=?
+                WHERE id = ? AND worker_id = ? AND status IN ('running', 'cancellation_requested')
+                """,
+                (now, now, job_id, worker_id),
+            )
+
+    def mark_pipeline_job_running(self, job_id: int) -> dict[str, Any]:
+        return self.claim_pipeline_job(job_id, "")
 
     def complete_pipeline_job(self, job_id: int, result: dict[str, Any], *, status: str = "completed") -> dict[str, Any]:
         now = utc_now_iso()
@@ -564,12 +588,25 @@ class MetadataStore:
             )
         return self.get_pipeline_job(job_id)
 
-    def recover_orphaned_jobs(self, *, error: str = "orphaned by service restart") -> list[dict[str, Any]]:
-        """服务重启后回收孤儿任务：running/cancellation_requested 标记失败，queued 保持待重新调度。"""
-        now = utc_now_iso()
+    def recover_orphaned_jobs(
+        self,
+        *,
+        worker_id: str = "",
+        stale_after_seconds: int = 120,
+        error: str = "orphaned by service restart",
+    ) -> list[dict[str, Any]]:
+        """回收本 worker 的遗留任务和心跳超时任务，不影响其他存活实例。"""
+        now = datetime.now(UTC)
+        now_iso = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        cutoff = (now - timedelta(seconds=stale_after_seconds)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT id FROM pipeline_jobs WHERE status IN ('running', 'cancellation_requested')"
+                """
+                SELECT id FROM pipeline_jobs
+                WHERE status IN ('running', 'cancellation_requested')
+                  AND (worker_id = ? OR worker_id IS NULL OR heartbeat_at IS NULL OR heartbeat_at < ?)
+                """,
+                (worker_id, cutoff),
             ).fetchall()
             orphan_ids = [int(row["id"] if isinstance(row, dict) else row[0]) for row in rows]
             if orphan_ids:
@@ -579,7 +616,7 @@ class MetadataStore:
                     SET status='failed', error=?, completed_at=?, updated_at=?
                     WHERE id IN ({','.join('?' * len(orphan_ids))})
                     """,
-                    (error, now, now, *orphan_ids),
+                    (error, now_iso, now_iso, *orphan_ids),
                 )
         return [self.get_pipeline_job(job_id) for job_id in orphan_ids]
 
@@ -1023,6 +1060,18 @@ class MetadataStore:
             deleted = getattr(cursor, "rowcount", 0) or 0
         return int(deleted)
 
+    def purge_old_records(self, *, retention_days: int) -> dict[str, int]:
+        """按保留期清理任务日志与审计事件。"""
+        if retention_days <= 0:
+            return {"pipeline_job_logs": 0, "audit_events": 0}
+        cutoff = (datetime.now(UTC) - timedelta(days=retention_days)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        deleted: dict[str, int] = {}
+        with self.connect() as connection:
+            for table in ("pipeline_job_logs", "audit_events"):
+                cursor = connection.execute(f"DELETE FROM {table} WHERE created_at < ?", (cutoff,))
+                deleted[table] = int(getattr(cursor, "rowcount", 0) or 0)
+        return deleted
+
     def get_audit_event(self, event_id: int) -> dict[str, Any]:
         with self.connect() as connection:
             row = connection.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
@@ -1294,6 +1343,8 @@ class PostgresMetadataStore(MetadataStore):
                 started_at TIMESTAMPTZ,
                 completed_at TIMESTAMPTZ,
                 cancelled_at TIMESTAMPTZ,
+                worker_id TEXT,
+                heartbeat_at TIMESTAMPTZ,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """,
@@ -1407,6 +1458,7 @@ class PostgresMetadataStore(MetadataStore):
             """,
         ):
             connection.execute(table_sql)
+        self._ensure_pipeline_job_columns(connection)
         connection.execute("CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON auth_sessions(expires_at)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_status ON pipeline_jobs(status)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at)")
@@ -1420,6 +1472,10 @@ class PostgresMetadataStore(MetadataStore):
             "INSERT INTO schema_migrations (version) VALUES (?) ON CONFLICT(version) DO NOTHING",
             (SCHEMA_VERSION,),
         )
+
+    def _ensure_pipeline_job_columns(self, connection: Any) -> None:
+        connection.execute("ALTER TABLE pipeline_jobs ADD COLUMN IF NOT EXISTS worker_id TEXT")
+        connection.execute("ALTER TABLE pipeline_jobs ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ")
 
 
 def metadata_store_from_uri(uri: str | Path = ":memory:") -> MetadataStore:

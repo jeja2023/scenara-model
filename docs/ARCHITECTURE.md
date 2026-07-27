@@ -41,6 +41,9 @@ Storage
 ## API
 
 - `GET /health`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
 - `GET /api/packages/scan`
 - `POST /api/packages/validate`
 - `GET /api/package-validations`
@@ -76,7 +79,14 @@ Storage
 - `export.reuse_existing: true`：显式声明才复用已存在的可加载 ONNX；默认每次导出都重新生成，避免改配置重跑后静默交付旧模型。
 - `evaluation.produced_metrics`：外部评估命令输出的 JSON 指标文件路径。评估成功后平台回读该文件作为真实指标并标注 `metrics_source: measured`；声明了该字段但回读失败时评估阶段直接失败。未配置外部评估时，`expected_metrics` 会被标注为 `metrics_source: declared`（自报值），发布审批链路应据此区分指标可信度。
 
-运行时保障：外部命令 stdout/stderr 由 reader 线程逐行消费（无管道死锁），逐行写入任务日志；取消/超时会终止整棵进程树；子进程环境剥离平台鉴权与对象存储凭证；输出以 UTF-8 解码。
+运行时保障：外部命令 stdout/stderr 由 reader 线程逐行消费（无管道死锁），按条数或时间批量写入任务日志；阶段事件和任务退出前强制 flush。取消检查按 3 秒窗口节流并同时续写 worker 心跳；取消/超时会终止整棵进程树；子进程使用剥离平台数据库、鉴权、管理员口令和对象存储凭证后的最小环境；输出以 UTF-8 解码。
+
+## 任务归属与维护
+
+- worker 以“主机名 + 进程 ID”标识，原子认领 queued 任务并把 `worker_id`、`heartbeat_at` 写入元数据。
+- 服务启动时只回收本 worker 遗留、无归属、无心跳或心跳超时的任务，不影响其他实例心跳正常的运行中任务。
+- 周期维护清理过期认证会话、超期任务日志和审计事件；保留期与维护间隔由环境变量配置。
+- SQLite 适合单实例；多实例使用 PostgreSQL 时仍由数据库状态守卫保证只有一个 worker 能从 queued 认领任务。
 
 ## 扩展边界
 

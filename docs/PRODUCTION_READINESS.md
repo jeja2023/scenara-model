@@ -12,7 +12,14 @@
 | `VMLAB_MAX_PACKAGE_SCAN_FILES` | `500` | 模型包扫描上限 |
 | `VMLAB_STORAGE_BACKEND` | `local` | 对象存储后端：`local`、`s3`、`minio` |
 | `VMLAB_STORAGE_URI` | 工作区路径 | local 根路径或 `s3://bucket/prefix` / `minio://bucket/prefix` |
-| `VMLAB_AUTH_TOKEN` | 空 | 设置后写接口要求 `Authorization: Bearer <token>` |
+| `VMLAB_AUTH_TOKEN` | 空 | 静态服务令牌，供 CI 与脚本通过 `Authorization: Bearer <token>` 认证 |
+| `VMLAB_ADMIN_PASSWORD` | 空 | 首次启动创建 admin 的口令；未设置时自动生成随机口令并打印到启动日志 |
+| `VMLAB_SESSION_TTL_HOURS` | `24` | 登录会话有效期 |
+| `VMLAB_LOGIN_MAX_FAILURES` | `5` | 同一用户名+IP 连续登录失败上限 |
+| `VMLAB_LOGIN_LOCKOUT_SECONDS` | `300` | 达到失败上限后的锁定时长 |
+| `VMLAB_LOG_RETENTION_DAYS` | `30` | 任务日志与审计事件保留天数 |
+| `VMLAB_MAINTENANCE_INTERVAL_SECONDS` | `3600` | 周期维护间隔 |
+| `VMLAB_EXTERNAL_COMMAND_ENV_PASSTHROUGH` | 空 | 显式放行给外部命令的环境变量名（逗号分隔） |
 | `VMLAB_MAX_UPLOAD_BYTES` | `524288000` | 上传文件大小上限 |
 | `VMLAB_PIPELINE_WORKERS` | `2` | 异步流水线线程池 worker 数 |
 | `VMLAB_EXTERNAL_COMMAND_TIMEOUT_SECONDS` | `3600` | 外部训练/导出/评估命令超时 |
@@ -74,7 +81,10 @@ docker build `
 可选生产形态（PostgreSQL / MinIO）：
 
 ```powershell
-docker compose --profile postgres --profile minio up --build
+docker compose `
+  -f docker-compose.yml `
+  -f docker-compose.postgres.yml `
+  --profile postgres --profile minio up --build
 ```
 
 ## 当前门禁
@@ -83,18 +93,18 @@ docker compose --profile postgres --profile minio up --build
 - 模型包严格模式必须校验 ONNX、sha256、模型卡、labels、样例。
 - API 路径不允许逃逸工作区。
 - CORS 在生产环境必须收紧到明确域名。
-- 生产写接口建议设置 `VMLAB_AUTH_TOKEN`，并在网关层补充统一身份认证。
+- 生产环境必须设置 `VMLAB_ADMIN_PASSWORD`，自动生成口令仅适合首次本地启动；CI 与脚本可改用 `VMLAB_AUTH_TOKEN`。
 - 多实例生产部署建议使用 PostgreSQL，并把对象存储切换为 MinIO/S3 或内部制品系统。
 - 大文件不提交 Git，只提交 manifest、配置、模板和报告。
 
 ## 2026-07 安全与任务运行补充
 
 - 前端静态文件回退会校验路径必须停留在 `frontend/dist` 内，禁止通过编码后的 `..` 读取工作区文件。
-- 写接口仍建议设置 `VMLAB_AUTH_TOKEN`，生产环境必须通过网关或服务配置注入强 token。
+- 全部 `/api` 接口（登录除外）均要求会话或静态令牌；生产环境应在网关层补充统一限流与访问控制。
 - 流水线支持异步 job：`POST /api/pipelines/run` 传入 `{"async": true}` 后，可通过 `/api/pipelines/jobs` 查询状态，并可对 job 执行 cancel/retry。
 - 外部训练命令默认只允许 argv list；字符串 shell 命令默认禁用。确需兼容旧命令时设置 `VMLAB_ALLOW_SHELL_COMMANDS=true`，并限制 `VMLAB_EXTERNAL_COMMAND_TIMEOUT_SECONDS` 和日志长度。
 - 本地对象存储使用 `VMLAB_STORAGE_URI`，默认 `artifacts/object-store`；对象 key 会校验不能逃逸存储根目录。
-- SQLite 使用 `MEMORY -> WAL -> DELETE -> OFF` 的 journal mode 回退、busy timeout 和线程锁；多实例或多人生产部署仍建议迁移 PostgreSQL。
+- SQLite 使用 WAL journal mode（回落顺序 `WAL -> TRUNCATE -> DELETE`，并校验 PRAGMA 实际生效值）、busy timeout 和每线程长连接；多实例或多人生产部署仍建议迁移 PostgreSQL。
 - 上传入口受 `VMLAB_MAX_UPLOAD_BYTES` 限制，超限文件会被拒绝并清理部分写入。
 ## Python 环境隔离建议
 
@@ -135,3 +145,13 @@ python -m pip check
 - `python -m compileall -q src tests migrations` 通过。
 - 异步流水线取消、Alembic baseline、普通 SQLite 迁移路径、前端取消状态反馈均有回归测试或构建校验覆盖。
 - 完整说明见 `docs/RELEASE_0.4.1.md`。
+
+## 0.7.0 发布门禁
+
+- Python 包、运行时 `__version__`、前端包版本和 lockfile 已统一为 `0.7.0`，并由 `scripts/check_versions.py` 自动校验。
+- `python -m pytest` 为 84 passed；Ruff、离线 acceptance、前端 TypeScript/Vite 构建均通过。
+- `npm audit --omit=dev --audit-level=high` 为 0 vulnerabilities；Linux 容器内 Python 严格依赖审计为 No known vulnerabilities found。
+- SQLite job 心跳迁移、其他 live worker 保护、日志批量 flush、取消节流、认证单次查库、历史记录清理和 PostgreSQL 健康检查均有回归测试。
+- 默认 Docker 镜像运行时版本为 `0.7.0`，`/health` 返回 200 且 SQLite journal mode 为 `WAL`。
+- `postgres,s3` extras 镜像已验证 boto3、psycopg、psycopg-pool 可导入；PostgreSQL + MinIO compose 叠加配置解析通过。
+- 完整说明见 `docs/RELEASE_0.7.0.md`。

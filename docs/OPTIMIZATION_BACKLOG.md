@@ -2,6 +2,13 @@
 
 本文件记录 2026-07 代码审查中发现、但尚未落盘的优化项。已完成部分见 commit `53366e7`。
 
+## 落地状态（2026-07-27）
+
+- A、C、D、E、F、G 与 P1-1/P1-2/P1-3 已完成并由 `0.7.0` 发布；B 已由前序提交完成。
+- P2 仍为未排期事项，本轮未修改其 API、认证和前端契约。
+- 验证基线：`84 passed`；版本门禁、Ruff、离线验收、前端构建、compose 配置解析、默认 Docker 镜像和 `postgres,s3` extras 镜像均通过。
+- 完整发布与升级说明见 [RELEASE_0.7.0.md](RELEASE_0.7.0.md)。
+
 ## 已完成（无需重做）
 
 - `storage.py`：journal mode 候选序列去掉排在最前的 `MEMORY` 并校验 PRAGMA 实际生效值；每线程一条长连接替代「每次 connect/close + 进程级锁」；`record_pipeline_job_log` 去掉回读；新增 `record_pipeline_job_logs` 批量写入与 `close()`。

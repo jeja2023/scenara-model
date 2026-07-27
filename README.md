@@ -1,6 +1,6 @@
 # Vision Model Lab
 
-当前版本：`0.4.1`。完整变更见 [CHANGELOG.md](CHANGELOG.md)，本次发布说明见 [docs/RELEASE_0.4.1.md](docs/RELEASE_0.4.1.md)。
+当前版本：`0.7.0`。完整变更见 [CHANGELOG.md](CHANGELOG.md)，发布说明见 [docs/RELEASE_0.7.0.md](docs/RELEASE_0.7.0.md)。
 
 `vision-model-lab` 是独立于 `gpu-services` 的视觉模型研发与交付仓库。它负责数据版本、标注规范、实验记录、评估、ONNX 导出和标准模型包交付；推理服务只消费 ONNX、模型卡、labels、样例和 `models.yml` 建议片段。
 
@@ -13,7 +13,8 @@
 - React/TypeScript 管理台源码，包含流水线、任务详情、模型包、实验、数据与契约入口。
 - YOLO 检测、ReID、分类、分割的本地基线适配器；配置 `training.command`、`export.command`、`evaluation.command` 后会执行真实外部框架命令并记录日志。
 - 实验记录、流水线运行、任务日志、产物索引、模型包校验、数据集版本、模型注册、发布审批、灰度/回滚和审计事件的元数据存储。
-- local/S3/MinIO 对象存储入口、上传接口、误差样本摘要和可选 Bearer Token 鉴权。
+- local/S3/MinIO 对象存储入口、上传接口和误差样本摘要。
+- 用户名密码登录与会话令牌鉴权：除 `/api/auth/login` 与 `/health` 外，全部 `/api` 接口要求认证；`VMLAB_AUTH_TOKEN` 静态令牌并行支持 CI 与脚本调用。
 
 ## 一键启动
 

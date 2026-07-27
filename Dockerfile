@@ -1,5 +1,7 @@
 ARG NODE_IMAGE=node:22-alpine
 ARG PYTHON_IMAGE=python:3.12-slim
+# Build with --build-arg VMLAB_EXTRAS=postgres,s3 when those backends are needed.
+ARG VMLAB_EXTRAS=""
 
 FROM ${NODE_IMAGE} AS frontend
 
@@ -12,6 +14,7 @@ COPY frontend ./
 RUN npm run build
 
 FROM ${PYTHON_IMAGE} AS backend
+ARG VMLAB_EXTRAS
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -21,10 +24,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# 先只拷贝依赖描述文件建立独立依赖层：源码改动不再触发依赖全量重装。
-COPY pyproject.toml README.md ./
+# Install third-party dependencies from a placeholder package so source-only changes
+# keep this Docker layer cached.
+COPY pyproject.toml README.md constraints.txt ./
+RUN python -m pip install --no-cache-dir --upgrade pip \
+    && mkdir -p src/vision_model_lab \
+    && printf '__version__ = "0.0.0"\n' > src/vision_model_lab/__init__.py \
+    && if [ -n "$VMLAB_EXTRAS" ]; then TARGET=".[$VMLAB_EXTRAS]"; else TARGET="."; fi \
+    && pip install --no-cache-dir -c constraints.txt "$TARGET" \
+    && pip uninstall -y vision-model-lab \
+    && rm -rf src build
+
 COPY src ./src
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir --no-deps .
 
 COPY configs ./configs
 COPY data ./data

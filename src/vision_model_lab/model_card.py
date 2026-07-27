@@ -7,7 +7,6 @@ from typing import Any
 from .naming import is_semver, parse_artifact_name
 from .utils import read_yaml
 
-
 REQUIRED_TOP_LEVEL = {
     "model",
     "dataset",

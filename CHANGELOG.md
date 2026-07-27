@@ -2,6 +2,51 @@
 
 本文件记录 `vision-model-lab` 的主要功能变更、交付状态和验证结果。格式参考 Keep a Changelog，版本号遵循语义化版本。
 
+## [0.7.0] - 2026-07-27
+
+本次版本集中落地 2026-07 生产化审查中的 A-G 与 P1 优化，降低训练任务对元数据存储的压力，补齐多实例任务归属、周期维护、依赖与 CI 门禁，并修复部署验证中发现的镜像版本残留和严格审计失效问题。
+
+### 性能与运行时
+
+- 新增 `_JobLogBuffer`：外部命令 stdout/stderr 按 200 行或 1 秒批量写入 `pipeline_job_logs`，阶段事件前和任务退出时强制 flush，避免高输出训练任务逐行开启事务并确保尾部日志不丢失。
+- 新增 `_CancelCheck`：取消查询从每 0.1 秒一次数据库访问节流为默认每 3 秒一次；同一路径续写 worker 心跳，不增加额外轮询线程。
+- `sha256_file` 新增以路径、文件大小和纳秒 mtime 为签名的线程安全摘要缓存，模型包扫描不再反复读取大体积 ONNX；新打包文件显式 `use_cache=False`，避免 `shutil.copy2` 保留 mtime 时复用错误摘要。
+- SQLite 元数据存储改为每线程长连接，任务日志支持单事务批量写入；journal mode 使用 `WAL -> TRUNCATE -> DELETE` 安全回落并校验 PRAGMA 实际生效值。
+
+### 多实例、存储与维护
+
+- `pipeline_jobs` 新增 `worker_id` 与 `heartbeat_at`，新增 `claim_pipeline_job` / `heartbeat_pipeline_job`；启动回收仅处理本 worker 遗留任务、无归属任务或心跳超时任务，不再误杀其他存活实例的训练。
+- 新增 Alembic 迁移 `20260726_060_job_heartbeat`，SQLite 与 PostgreSQL 运行时 DDL 同步补列，schema 版本更新为 `20260726_060_job_heartbeat`。
+- 新增周期维护任务，按 `VMLAB_MAINTENANCE_INTERVAL_SECONDS` 清理过期会话，并按 `VMLAB_LOG_RETENTION_DAYS` 清理任务日志和审计事件；关闭服务时会取消维护任务并回收存储连接。
+- `/health` 新增 `metadata_journal_mode`；SQLite 返回实际 journal mode，内存库返回 `memory`，PostgreSQL 返回 `postgresql`，避免在 PostgreSQL 后端执行 SQLite PRAGMA。
+
+### 认证与安全
+
+- 路由依赖复用认证中间件写入的 `request.state.identity`，每个已认证请求不再重复查询 `auth_sessions`。
+- 未配置 `VMLAB_ADMIN_PASSWORD` 时首次启动改为生成随机管理员口令，不再使用固定弱口令；新增按用户名和客户端 IP 计数的登录失败限流与临时锁定。
+- 外部训练命令环境改为最小继承并剥离平台数据库、管理员口令和对象存储凭证；仅通过 `VMLAB_EXTERNAL_COMMAND_ENV_PASSTHROUGH` 显式放行额外变量。
+
+### 工程化与依赖
+
+- Python、运行时、前端 package 与 lockfile 版本统一升级到 `0.7.0`；新增 `scripts/check_versions.py` 并接入离线验收，阻止版本声明再次漂移。
+- `dev` extra 补齐 Ruff、Alembic 与 SQLAlchemy，保证干净环境可以执行迁移测试；新增 Ruff 配置并清零存量 lint 问题。
+- 新增 `constraints.txt`，为后端运行、开发、PostgreSQL 和 S3 依赖设置已验证的主版本上界。
+- CI 新增 Ruff 阻断门禁、非阻断 Pyright 观察任务、Python 严格漏洞审计和 Docker 服务冒烟；审计前升级 pip，并在测试后卸载本地项目包，只严格审计可由漏洞数据库识别的第三方依赖。
+- 前端继续执行 TypeScript/Vite 生产构建及 `npm audit --omit=dev --audit-level=high`。
+
+### 部署
+
+- Dockerfile 使用占位包缓存第三方依赖层，源码变化只重装项目自身；占位安装后同时清理 `src` 与 `build`，修复旧构建目录让运行时 `__version__` 错误残留为 `0.0.0` 的问题。
+- Docker 依赖层先升级 pip；镜像 smoke test 断言运行时版本与安装包元数据一致，不再只验证模块可导入。
+- Dockerfile 新增 `VMLAB_EXTRAS` build arg；compose 默认构建 `postgres,s3` extras，并允许通过环境变量覆盖元数据与对象存储后端。
+- 新增 `docker-compose.postgres.yml`，将应用连接到 compose 内的 PostgreSQL 与 MinIO，并通过健康条件控制启动顺序。
+
+### 文档与验证
+
+- 同步 README、架构、运维、生产验收与优化清单，新增 `docs/RELEASE_0.7.0.md`。
+- 后端全量测试：84 passed；Ruff、版本门禁、离线验收、前端构建、npm audit、compose 配置解析和 Python 严格依赖审计通过。
+- 默认 Docker 镜像 `/health` 返回 200、版本为 `0.7.0`、SQLite journal mode 为 `WAL`；`postgres,s3` extras 镜像成功导入 boto3、psycopg 与 psycopg-pool。
+
 ## [0.6.0] - 2026-07-16
 
 ### 新增（登录与认证）

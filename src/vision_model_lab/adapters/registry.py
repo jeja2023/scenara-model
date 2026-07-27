@@ -17,7 +17,6 @@ from vision_model_lab.adapters.local_tasks import (
 from vision_model_lab.adapters.reference_identity import REFERENCE_IDENTITY_ADAPTER
 from vision_model_lab.utils import read_yaml
 
-
 ADAPTERS: dict[str, TaskAdapter] = {
     REFERENCE_IDENTITY_ADAPTER.name: REFERENCE_IDENTITY_ADAPTER,
     DETECTION_YOLO_BASELINE.name: DETECTION_YOLO_BASELINE,

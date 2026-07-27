@@ -17,13 +17,34 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
       - name: Install backend
-        run: python -m pip install -e ".[dev]"
+        run: python -m pip install -e ".[dev]" -c constraints.txt
+      - name: Lint
+        run: python -m ruff check src scripts tests migrations
       - name: Test backend and contracts
         run: |
           export PYTHONDONTWRITEBYTECODE=1
           python -m pytest
           python scripts/acceptance_check.py --skip-pytest
+      - name: Audit Python dependencies
+        run: |
+          python -m pip install pip-audit
+          python -m pip uninstall -y vision-model-lab
+          pip-audit --desc --strict
+
+  typecheck:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]" -c constraints.txt pyright
+      - run: python -m pyright src
 
   frontend:
     runs-on: ubuntu-latest
@@ -58,3 +79,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build image
         run: docker build -t vision-model-lab:ci .
+      - name: Smoke test image
+        run: |
+          docker run --rm vision-model-lab:ci python -c "from importlib.metadata import version; from vision_model_lab import __version__; from vision_model_lab.api import app; assert __version__ == version('vision-model-lab'); print(app.title, __version__)"
+          docker run -d --name vmlab-ci -p 8080:8080 vision-model-lab:ci
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8080/health | grep -q '"status":"ok"'
+          docker logs vmlab-ci
+          docker rm -f vmlab-ci

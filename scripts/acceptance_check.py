@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
-import argparse
 import subprocess
 import sys
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,6 +50,7 @@ def main() -> int:
     if not args.skip_pytest:
         checks.append(run([sys.executable, "-m", "pytest"], env=env))
     checks.extend([
+        run([sys.executable, "scripts/check_versions.py"]),
         run([sys.executable, "scripts/prepare_dataset.py", "data/manifests/example_train_v1.jsonl", "--json"]),
         run([sys.executable, "scripts/validate_contract.py", "models-fragment", "configs/export/models.fragment.template.yml", "--json"]),
         run([sys.executable, "scripts/validate_contract.py", "release-decision", "configs/export/release-decision.template.yml", "--json"]),

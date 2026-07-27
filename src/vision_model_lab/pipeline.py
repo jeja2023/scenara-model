@@ -9,7 +9,6 @@ from vision_model_lab.adapters.registry import run_stage
 from vision_model_lab.packaging.model_package import create_model_package, validate_model_package
 from vision_model_lab.utils import ensure_dir, read_jsonl, read_yaml, write_json
 
-
 SYNTHETIC_JPEG_BYTES = bytes.fromhex("ffd8ffe000104a46494600010101000100010000ffd9")
 
 
