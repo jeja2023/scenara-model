@@ -29,6 +29,11 @@ class ObjectStore(Protocol):
         ...
 
 
+class S3Client(Protocol):
+    def upload_file(self, source: str, bucket: str, key: str, ExtraArgs: dict[str, str]) -> object:  # noqa: N803
+        ...
+
+
 class LocalObjectStore:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root).expanduser().resolve()
@@ -63,7 +68,7 @@ class S3ObjectStore:
         *,
         endpoint_url: str | None = None,
         region_name: str | None = None,
-        client: object | None = None,
+        client: S3Client | None = None,
     ) -> None:
         parsed = urlparse(uri)
         if parsed.scheme not in {"s3", "minio"} or not parsed.netloc:
@@ -75,7 +80,7 @@ class S3ObjectStore:
             self.client = client
         else:
             try:
-                import boto3
+                import boto3  # pyright: ignore[reportMissingImports]
             except ImportError as exc:  # pragma: no cover - depends on optional deployment extra
                 raise RuntimeError("boto3 is required for s3/minio object storage; install vision-model-lab[s3].") from exc
             self.client = boto3.client(

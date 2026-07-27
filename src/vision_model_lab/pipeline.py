@@ -301,7 +301,8 @@ def create_package_from_experiment(
         export_result = run_stage("export", config_path)
         if export_result.status != "completed":
             raise RuntimeError(f"Export stage did not complete (status={export_result.status}); refusing to package.")
-        onnx_path = export_result.payload.get("onnx") or export_result.path
+        exported_onnx = export_result.payload.get("onnx")
+        onnx_path = Path(exported_onnx) if exported_onnx else export_result.path
     onnx_path = Path(onnx_path)
     artifact_name = onnx_path.name
     experiment = config.get("experiment", {})

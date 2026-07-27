@@ -22,6 +22,13 @@ def utc_now_iso() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
+def _required_lastrowid(cursor: Any) -> int:
+    value = cursor.lastrowid
+    if value is None:
+        raise RuntimeError("Database insert did not return a row ID.")
+    return int(value)
+
+
 class MetadataStore:
     def __init__(self, path: str | Path = ":memory:") -> None:
         self.path = path
@@ -375,7 +382,7 @@ class MetadataStore:
         return connection
 
     @contextmanager
-    def connect(self) -> Iterator[sqlite3.Connection]:
+    def connect(self) -> Iterator[Any]:
         shared = self._shared_connection
         if shared is not None:
             # 内存库跨线程共享同一条连接，必须串行化。
@@ -464,7 +471,7 @@ class MetadataStore:
                     json.dumps(report, ensure_ascii=False),
                 ),
             )
-            validation_id = int(cursor.lastrowid)
+            validation_id = _required_lastrowid(cursor)
         return self.get_package_validation(validation_id)
 
     def list_package_validations(self, limit: int = 50) -> list[dict[str, Any]]:
@@ -488,7 +495,7 @@ class MetadataStore:
                     json.dumps(report, ensure_ascii=False),
                 ),
             )
-            run_id = int(cursor.lastrowid)
+            run_id = _required_lastrowid(cursor)
         return self.get_pipeline_run(run_id)
 
     def list_pipeline_runs(self, limit: int = 50) -> list[dict[str, Any]]:
@@ -515,7 +522,7 @@ class MetadataStore:
                 """,
                 (config_path, json.dumps(request, ensure_ascii=False)),
             )
-            job_id = int(cursor.lastrowid)
+            job_id = _required_lastrowid(cursor)
         return self.get_pipeline_job(job_id)
 
     def claim_pipeline_job(self, job_id: int, worker_id: str) -> dict[str, Any]:
@@ -672,7 +679,7 @@ class MetadataStore:
                 """,
                 (job_id, stream, message, json.dumps(payload, ensure_ascii=False), created_at),
             )
-            log_id = int(cursor.lastrowid)
+            log_id = _required_lastrowid(cursor)
         # 不回读：这是训练期间最热的写路径，多一次 SELECT 会让开销翻倍。
         return {
             "id": log_id,
@@ -772,7 +779,7 @@ class MetadataStore:
                 """,
                 (job_id, run_id, name, kind, path, uri, size),
             )
-            artifact_id = int(cursor.lastrowid)
+            artifact_id = _required_lastrowid(cursor)
         return self.get_pipeline_artifact(artifact_id)
 
     def list_pipeline_artifacts(
@@ -822,7 +829,7 @@ class MetadataStore:
                 """,
                 (actor, action, target, json.dumps(payload, ensure_ascii=False)),
             )
-            event_id = int(cursor.lastrowid)
+            event_id = _required_lastrowid(cursor)
         return self.get_audit_event(event_id)
 
     def list_audit_events(self, limit: int = 100) -> list[dict[str, Any]]:
@@ -944,7 +951,7 @@ class MetadataStore:
                     json.dumps(payload.get("decision", {}), ensure_ascii=False),
                 ),
             )
-            approval_id = int(cursor.lastrowid)
+            approval_id = _required_lastrowid(cursor)
         return self.get_release_approval(approval_id)
 
     def get_release_approval(self, approval_id: int) -> dict[str, Any]:
@@ -979,7 +986,7 @@ class MetadataStore:
                     payload.get("rollback_target"),
                 ),
             )
-            rollout_id = int(cursor.lastrowid)
+            rollout_id = _required_lastrowid(cursor)
         return self.get_deployment_rollout(rollout_id)
 
     def get_deployment_rollout(self, rollout_id: int) -> dict[str, Any]:
@@ -1249,7 +1256,7 @@ class PostgresMetadataStore(MetadataStore):
             if self._pool is not None:
                 return self._pool
             try:
-                from psycopg_pool import ConnectionPool
+                from psycopg_pool import ConnectionPool  # pyright: ignore[reportMissingImports]
             except ImportError:
                 self._pool = False  # psycopg_pool 未安装时回落到按需建连
                 return self._pool
@@ -1263,7 +1270,7 @@ class PostgresMetadataStore(MetadataStore):
             return self._pool
 
     @contextmanager
-    def connect(self) -> Iterator[_PostgresConnectionAdapter]:
+    def connect(self) -> Iterator[Any]:
         try:
             import psycopg
             from psycopg.rows import dict_row
@@ -1278,7 +1285,8 @@ class PostgresMetadataStore(MetadataStore):
                 yield adapter
                 connection.commit()
             return
-        connection = psycopg.connect(str(self.path), row_factory=dict_row, connect_timeout=10)
+        row_factory: Any = dict_row
+        connection = psycopg.connect(str(self.path), row_factory=row_factory, connect_timeout=10)
         adapter = _PostgresConnectionAdapter(connection)
         try:
             yield adapter

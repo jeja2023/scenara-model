@@ -41,11 +41,12 @@
 
 - Python package、运行时 `__version__`、前端 package 与 lockfile 统一为 `0.7.0`。
 - 新增 `scripts/check_versions.py`，同时校验 Python、前端、README 和 CHANGELOG 的最新版本。
-- `dev` extra 包含 Ruff、Alembic 与 SQLAlchemy，干净 clone 可直接执行 lint 和迁移测试。
+- `dev` extra 包含 Ruff、Pyright、Alembic 与 SQLAlchemy，干净 clone 可直接执行 lint、类型检查和迁移测试。
 - Ruff 覆盖 `src`、`scripts`、`tests` 和 `migrations`；存量 import、未使用符号和现代化规则问题已经清零。
 - 新增 `constraints.txt`，限制后端依赖的已验证主版本范围。
 - CI 新增 Python 漏洞审计：先升级 pip，测试结束后卸载本地项目包，再以 `--strict` 审计所有第三方发行包。
-- Pyright 作为观察任务运行，当前不阻断合并；待存量类型问题清零后再移除 `continue-on-error`。
+- Pyright 存量问题已经清零并升级为阻断门禁，覆盖可空路径、适配器协议、可选存储后端和数据库自增 ID 等边界。
+- GitHub Actions 已迁移到 Node 24 兼容主版本：`actions/checkout@v5`、`actions/setup-python@v6` 和 `actions/setup-node@v5`。
 
 ## Docker 与 compose
 
@@ -112,6 +113,7 @@ docker compose `
 
 - `python -m pytest`：84 passed。
 - `python -m ruff check src scripts tests migrations`：通过。
+- `python -m pyright src`：通过，0 errors、0 warnings。
 - `python scripts/check_versions.py`：通过，版本 `0.7.0`。
 - `python scripts/acceptance_check.py --skip-pytest`：通过。
 - `npm run build`：通过，前端包版本 `0.7.0`。

@@ -77,12 +77,14 @@ def run_evaluation(config_path: str | Path, onnx_path: str | Path | None = None)
     output_dir = ensure_dir(_experiment_dir(config) / "eval")
     if onnx_path is None:
         artifact_name = config.get("export", {}).get("artifact_name", "reference_identity_v0.1.0_fp32.onnx")
-        onnx_path = _experiment_dir(config) / "export" / artifact_name
-    check = check_onnx_loadable(onnx_path)
+        resolved_onnx_path = _experiment_dir(config) / "export" / str(artifact_name)
+    else:
+        resolved_onnx_path = Path(onnx_path)
+    check = check_onnx_loadable(resolved_onnx_path)
     report = {
         "status": "completed",
         "adapter": "reference_identity",
-        "onnx": str(onnx_path),
+        "onnx": str(resolved_onnx_path),
         "check": check,
         "metrics": {"identity_loadable": 1.0},
     }

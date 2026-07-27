@@ -29,9 +29,10 @@
 ### 工程化与依赖
 
 - Python、运行时、前端 package 与 lockfile 版本统一升级到 `0.7.0`；新增 `scripts/check_versions.py` 并接入离线验收，阻止版本声明再次漂移。
-- `dev` extra 补齐 Ruff、Alembic 与 SQLAlchemy，保证干净环境可以执行迁移测试；新增 Ruff 配置并清零存量 lint 问题。
+- `dev` extra 补齐 Ruff、Pyright、Alembic 与 SQLAlchemy，保证干净环境可以执行 lint、类型检查和迁移测试；新增 Ruff 配置并清零存量 lint 问题。
 - 新增 `constraints.txt`，为后端运行、开发、PostgreSQL 和 S3 依赖设置已验证的主版本上界。
-- CI 新增 Ruff 阻断门禁、非阻断 Pyright 观察任务、Python 严格漏洞审计和 Docker 服务冒烟；审计前升级 pip，并在测试后卸载本地项目包，只严格审计可由漏洞数据库识别的第三方依赖。
+- CI 新增 Ruff、Pyright 阻断门禁、Python 严格漏洞审计和 Docker 服务冒烟；清零可空路径、适配器协议、可选存储后端和数据库自增 ID 的类型问题，审计前升级 pip，并在测试后卸载本地项目包，只严格审计可由漏洞数据库识别的第三方依赖。
+- GitHub Actions 升级到 Node 24 兼容版本：`actions/checkout@v5`、`actions/setup-python@v6` 和 `actions/setup-node@v5`，消除 Node 20 退役警告。
 - 前端继续执行 TypeScript/Vite 生产构建及 `npm audit --omit=dev --audit-level=high`。
 
 ### 部署
@@ -44,7 +45,7 @@
 ### 文档与验证
 
 - 同步 README、架构、运维、生产验收与优化清单，新增 `docs/RELEASE_0.7.0.md`。
-- 后端全量测试：84 passed；Ruff、版本门禁、离线验收、前端构建、npm audit、compose 配置解析和 Python 严格依赖审计通过。
+- 后端全量测试：84 passed；Ruff、Pyright、版本门禁、离线验收、前端构建、npm audit、compose 配置解析和 Python 严格依赖审计通过。
 - 默认 Docker 镜像 `/health` 返回 200、版本为 `0.7.0`、SQLite journal mode 为 `WAL`；`postgres,s3` extras 镜像成功导入 boto3、psycopg 与 psycopg-pool。
 
 ## [0.6.0] - 2026-07-16

@@ -24,9 +24,14 @@ class AdapterResult:
 
 
 class TaskAdapter(Protocol):
-    name: str
-    task: str
-    description: str
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def task(self) -> str: ...
+
+    @property
+    def description(self) -> str: ...
 
     def train(
         self,

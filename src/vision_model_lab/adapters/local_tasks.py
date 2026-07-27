@@ -675,7 +675,8 @@ class LocalTaskAdapter:
                 report = {"status": "failed", "adapter": self.name, "task": self.task, "export": export_result.to_dict()}
                 write_json(report_path, report)
                 return AdapterResult("failed", report_path, {"report": str(report_path)})
-            onnx_path = export_result.payload.get("onnx") or export_result.path
+            exported_onnx = export_result.payload.get("onnx")
+            onnx_path = Path(exported_onnx) if exported_onnx else export_result.path
         if external_command:
             external_result = _run_external_command(
                 external_command,
