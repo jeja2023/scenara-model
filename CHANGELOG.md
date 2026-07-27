@@ -9,7 +9,7 @@
 ### 性能与运行时
 
 - 新增 `_JobLogBuffer`：外部命令 stdout/stderr 按 200 行或 1 秒批量写入 `pipeline_job_logs`，阶段事件前和任务退出时强制 flush，避免高输出训练任务逐行开启事务并确保尾部日志不丢失。
-- 新增 `_CancelCheck`：取消查询从每 0.1 秒一次数据库访问节流为默认每 3 秒一次；同一路径续写 worker 心跳，不增加额外轮询线程。
+- 新增 `_CancelCheck`：首次调用立即查询取消状态，后续从每 0.1 秒一次数据库访问节流为默认每 3 秒一次；同一路径续写 worker 心跳，不增加额外轮询线程。
 - `sha256_file` 新增以路径、文件大小和纳秒 mtime 为签名的线程安全摘要缓存，模型包扫描不再反复读取大体积 ONNX；新打包文件显式 `use_cache=False`，避免 `shutil.copy2` 保留 mtime 时复用错误摘要。
 - SQLite 元数据存储改为每线程长连接，任务日志支持单事务批量写入；journal mode 使用 `WAL -> TRUNCATE -> DELETE` 安全回落并校验 PRAGMA 实际生效值。
 
@@ -31,7 +31,7 @@
 - Python、运行时、前端 package 与 lockfile 版本统一升级到 `0.7.0`；新增 `scripts/check_versions.py` 并接入离线验收，阻止版本声明再次漂移。
 - `dev` extra 补齐 Ruff、Pyright、Alembic 与 SQLAlchemy，保证干净环境可以执行 lint、类型检查和迁移测试；新增 Ruff 配置并清零存量 lint 问题。
 - 新增 `constraints.txt`，为后端运行、开发、PostgreSQL 和 S3 依赖设置已验证的主版本上界。
-- CI 新增 Ruff、Pyright 阻断门禁、Python 严格漏洞审计和 Docker 服务冒烟；清零可空路径、适配器协议、可选存储后端和数据库自增 ID 的类型问题，审计前升级 pip，并在测试后卸载本地项目包，只严格审计可由漏洞数据库识别的第三方依赖。
+- CI 新增 Ruff、Pyright 阻断门禁、Python 严格漏洞审计和 Docker 服务冒烟；类型检查安装 PostgreSQL 与 S3 extras 并清零可空路径、适配器协议、可选存储后端和数据库自增 ID 的类型问题，审计前升级 pip，并在测试后卸载本地项目包，只严格审计可由漏洞数据库识别的第三方依赖。
 - GitHub Actions 升级到 Node 24 兼容版本：`actions/checkout@v5`、`actions/setup-python@v6` 和 `actions/setup-node@v5`，消除 Node 20 退役警告。
 - 前端继续执行 TypeScript/Vite 生产构建及 `npm audit --omit=dev --audit-level=high`。
 

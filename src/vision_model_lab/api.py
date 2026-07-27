@@ -445,14 +445,14 @@ class _CancelCheck:
     def __init__(self, job_id: int, *, interval: float = 3.0) -> None:
         self._job_id = job_id
         self._interval = interval
-        self._checked_at = 0.0
+        self._checked_at: float | None = None
         self._cancelled = False
 
     def __call__(self) -> bool:
         if self._cancelled:
             return True
         now = time.monotonic()
-        if now - self._checked_at < self._interval:
+        if self._checked_at is not None and now - self._checked_at < self._interval:
             return False
         self._checked_at = now
         try:

@@ -87,6 +87,7 @@ def test_cancel_check_is_throttled(monkeypatch: pytest.MonkeyPatch) -> None:
     job = api.STORE.create_pipeline_job("configs/experiments/example.yml", {})
     original = api.STORE.get_pipeline_job
     calls = 0
+    now = [1.0]
 
     def counted(job_id: int) -> dict[str, object]:
         nonlocal calls
@@ -94,10 +95,15 @@ def test_cancel_check_is_throttled(monkeypatch: pytest.MonkeyPatch) -> None:
         return original(job_id)
 
     monkeypatch.setattr(api.STORE, "get_pipeline_job", counted)
+    monkeypatch.setattr(api.time, "monotonic", lambda: now[0])
     should_cancel = api._CancelCheck(int(job["id"]), interval=60.0)
 
     assert [should_cancel() for _ in range(50)] == [False] * 50
     assert calls == 1
+
+    now[0] += 60.0
+    assert should_cancel() is False
+    assert calls == 2
 
 
 def test_job_log_buffer_flushes_in_one_batch(monkeypatch: pytest.MonkeyPatch) -> None:
