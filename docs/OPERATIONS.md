@@ -114,6 +114,16 @@ python -m pip check
 - 大模型目录扫描受 `VMLAB_MAX_PACKAGE_SCAN_FILES` 保护，触顶时应收窄扫描目录或提高上限。
 - 管理台会显示“排队中”“取消中”“已取消”等中文状态，可用 job 详情确认取消时间、阶段、原因和保留产物。
 
+## 0.8.0 运维补充
+
+- 升级前备份元数据数据库并执行 `vmlab storage migrate` 或 `python -m alembic upgrade head`；运行时版本应为 `0.8.0`。
+- `/health` 的 `version` 应为 `0.8.0`；SQLite 部署的 `metadata_journal_mode` 应优先显示 `WAL`，PostgreSQL 部署应显示 `postgresql`。
+- 生产训练配置必须提供真实 train/val/test manifest、`training.produced_checkpoint`、`export.produced_onnx` 和 `evaluation.produced_metrics`；平台会校验产物确实由本次命令生成。
+- 生产环境只能使用 `package.profile: production` 通过注册和发布；`smoke` 包仅用于开发验证，不能审批或 rollout。
+- 首次真实训练前执行 `scripts/examples/check_training_runtime.py --require-module ultralytics --require-cuda`，确认训练框架、Torch、CUDA 和 GPU 设备均可用。
+- 生产模型注册和 rollout 必须具备严格 ONNX/模型卡溯源校验、审批记录以及已注册的 rollback target。
+- 完整发布和升级说明见 `docs/RELEASE_0.8.0.md`。
+
 ## 0.7.0 运维补充
 
 - 升级前备份元数据数据库并执行 `vmlab storage migrate` 或 `python -m alembic upgrade head`，确认 `pipeline_jobs` 已包含 `worker_id` 与 `heartbeat_at`。

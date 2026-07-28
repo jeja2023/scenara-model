@@ -1,16 +1,40 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from vision_model_lab.model_card import ModelCardIssue, validate_model_card
 from vision_model_lab.naming import parse_artifact_name
 from vision_model_lab.utils import ensure_dir, non_empty_lines, sha256_file, unique_preserve_order, write_yaml
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+
+
+def _atomic_copy(source: Path, destination: Path) -> None:
+    if source.resolve() == destination.resolve():
+        return
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.{uuid4().hex}.tmp")
+    try:
+        shutil.copy2(source, temporary)
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _atomic_write_text(destination: Path, value: str) -> None:
+    temporary = destination.with_name(f".{destination.name}.{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(value, encoding="utf-8")
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 @dataclass
@@ -199,7 +223,12 @@ def _validate_examples(examples_dir: Path, *, strict_examples: bool, labels: set
     return issues
 
 
-def _validate_onnx(model_file: Path) -> tuple[list[PackageIssue], bool, bool]:
+def _validate_onnx(
+    model_file: Path,
+    model_card_data: dict[str, Any] | None = None,
+    *,
+    enforce_contract: bool = False,
+) -> tuple[list[PackageIssue], bool, bool]:
     issues: list[PackageIssue] = []
     onnx_checked = False
     ort_checked = False
@@ -216,8 +245,40 @@ def _validate_onnx(model_file: Path) -> tuple[list[PackageIssue], bool, bool]:
     try:
         import onnxruntime as ort
 
-        ort.InferenceSession(str(model_file), providers=["CPUExecutionProvider"])
+        session = ort.InferenceSession(str(model_file), providers=["CPUExecutionProvider"])
         ort_checked = True
+        input_contract = model_card_data.get("input", {}) if enforce_contract and isinstance(model_card_data, dict) else {}
+        if isinstance(input_contract, dict) and session.get_inputs():
+            runtime_input = session.get_inputs()[0]
+            expected_shape = input_contract.get("shape")
+            if isinstance(expected_shape, list):
+                runtime_shape = runtime_input.shape
+                if len(runtime_shape) != len(expected_shape) or any(
+                    isinstance(actual, int) and actual != expected
+                    for actual, expected in zip(runtime_shape, expected_shape, strict=False)
+                ):
+                    issues.append(
+                        _issue(
+                            "package.onnx_input_shape_mismatch",
+                            f"Model card input shape {expected_shape} does not match ONNX input shape {runtime_shape}",
+                            str(model_file),
+                        )
+                    )
+            expected_dtype = str(input_contract.get("dtype") or "").lower()
+            runtime_dtype = {
+                "tensor(float)": "float32",
+                "tensor(float16)": "float16",
+                "tensor(uint8)": "uint8",
+                "tensor(int8)": "int8",
+            }.get(runtime_input.type)
+            if expected_dtype and runtime_dtype and expected_dtype != runtime_dtype:
+                issues.append(
+                    _issue(
+                        "package.onnx_input_dtype_mismatch",
+                        f"Model card input dtype {expected_dtype} does not match ONNX input dtype {runtime_dtype}",
+                        str(model_file),
+                    )
+                )
     except Exception as exc:  # noqa: BLE001
         issues.append(_issue("package.ort_load_failed", f"ONNX Runtime CPU load failed: {exc}", str(model_file)))
 
@@ -232,6 +293,7 @@ def validate_model_package(
     strict_sidecars: bool = True,
     strict_examples: bool = True,
     strict_onnx: bool = False,
+    strict_provenance: bool = False,
 ) -> PackageValidation:
     resolved = Path(package_dir)
     issues: list[PackageIssue] = []
@@ -284,13 +346,16 @@ def validate_model_package(
         if not labels_file.exists():
             issues.append(_issue("package.missing_labels", "Labels file is required", str(labels_file)))
 
+    model_card_data: dict[str, Any] = {}
     if model_card.exists():
         card_result = validate_model_card(
             model_card,
             artifact_filename=model_file.name,
             expected_sha256=digest,
             strict_hash=strict_hash,
+            strict_provenance=strict_provenance,
         )
+        model_card_data = card_result.data
         for card_issue in card_result.issues:
             assert isinstance(card_issue, ModelCardIssue)
             issues.append(_issue(card_issue.code, card_issue.message, card_issue.path))
@@ -305,7 +370,11 @@ def validate_model_package(
     onnx_checked = False
     ort_checked = False
     if strict_onnx:
-        onnx_issues, onnx_checked, ort_checked = _validate_onnx(model_file)
+        onnx_issues, onnx_checked, ort_checked = _validate_onnx(
+            model_file,
+            model_card_data,
+            enforce_contract=strict_provenance,
+        )
         issues.extend(onnx_issues)
 
     ok = not any(issue.severity == "error" for issue in issues)
@@ -377,6 +446,30 @@ def default_model_card(
     }
 
 
+def _onnx_input_contract(path: Path) -> tuple[list[int] | None, str | None]:
+    try:
+        import onnx
+
+        model = onnx.load(str(path))
+        value = model.graph.input[0]
+        tensor = value.type.tensor_type
+        shape: list[int] = []
+        for dimension in tensor.shape.dim:
+            if not dimension.dim_value:
+                return None, None
+            shape.append(int(dimension.dim_value))
+        dtype_by_enum: dict[int, str] = {
+            int(onnx.TensorProto.FLOAT): "float32",
+            int(onnx.TensorProto.FLOAT16): "float16",
+            int(onnx.TensorProto.UINT8): "uint8",
+            int(onnx.TensorProto.INT8): "int8",
+        }
+        dtype = dtype_by_enum.get(int(tensor.elem_type))
+        return shape, dtype
+    except Exception:  # noqa: BLE001
+        return None, None
+
+
 def create_model_package(
     *,
     output_root: str | Path,
@@ -389,6 +482,7 @@ def create_model_package(
     architecture: str,
     examples_dir: str | Path | None = None,
     model_card: str | Path | None = None,
+    model_card_data: dict[str, Any] | None = None,
     overwrite: bool = False,
 ) -> Path:
     parse_artifact_name(artifact_name)
@@ -400,40 +494,55 @@ def create_model_package(
     destination_model = destination_dir / artifact_name
     if destination_model.exists() and not overwrite:
         raise FileExistsError(f"Model already exists: {destination_model}")
-    shutil.copy2(source_model, destination_model)
+    _atomic_copy(source_model, destination_model)
 
     # copy2 保留源文件 mtime，(size, mtime) 缓存键在这里会命中上一个模型的摘要。
     digest = sha256_file(destination_model, use_cache=False)
     stem = destination_model.stem
     destination_labels = destination_dir / f"{stem}.labels.txt"
     if labels_file:
-        shutil.copy2(labels_file, destination_labels)
+        _atomic_copy(Path(labels_file), destination_labels)
     else:
         label_values = labels or []
         if not label_values:
             raise ValueError("Either labels_file or labels must be provided")
-        destination_labels.write_text("\n".join(label_values) + "\n", encoding="utf-8")
+        _atomic_write_text(destination_labels, "\n".join(label_values) + "\n")
 
     destination_card = destination_dir / f"{stem}.model-card.yml"
+    if model_card and model_card_data is not None:
+        raise ValueError("Specify either model_card or model_card_data, not both")
     if model_card:
-        shutil.copy2(model_card, destination_card)
+        _atomic_copy(Path(model_card), destination_card)
+    elif model_card_data is not None:
+        card_data = deepcopy(model_card_data)
+        model_section = card_data.setdefault("model", {})
+        if not isinstance(model_section, dict):
+            raise ValueError("model_card_data.model must be an object")
+        model_section["sha256"] = digest
+        write_yaml(destination_card, card_data)
     else:
+        card = default_model_card(
+            artifact_name=artifact_name,
+            task=task,
+            architecture=architecture,
+            labels_name=destination_labels.name,
+            sha256=digest,
+        )
+        input_shape, input_dtype = _onnx_input_contract(destination_model)
+        if input_shape is not None and len(input_shape) == 4:
+            card["input"]["shape"] = input_shape
+        if input_dtype is not None:
+            card["input"]["dtype"] = input_dtype
         write_yaml(
             destination_card,
-            default_model_card(
-                artifact_name=artifact_name,
-                task=task,
-                architecture=architecture,
-                labels_name=destination_labels.name,
-                sha256=digest,
-            ),
+            card,
         )
 
     destination_examples = ensure_dir(destination_dir / f"{stem}.examples")
     if examples_dir:
         for source in Path(examples_dir).iterdir():
             if source.is_file():
-                shutil.copy2(source, destination_examples / source.name)
+                _atomic_copy(source, destination_examples / source.name)
 
     return destination_dir
 

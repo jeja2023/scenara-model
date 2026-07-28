@@ -55,6 +55,7 @@ def validate_model_card(
     artifact_filename: str | None = None,
     expected_sha256: str | None = None,
     strict_hash: bool = False,
+    strict_provenance: bool = False,
 ) -> ModelCardValidation:
     resolved = Path(path)
     issues: list[ModelCardIssue] = []
@@ -192,6 +193,43 @@ def validate_model_card(
                 "model.sha256",
             )
         )
+
+    if strict_provenance:
+        provenance = data.get("provenance")
+        if not isinstance(provenance, dict):
+            issues.append(ModelCardIssue("model_card.missing_provenance", "provenance is required for a production model package", "provenance"))
+        else:
+            if provenance.get("profile") != "production":
+                issues.append(ModelCardIssue("model_card.untrusted_profile", "provenance.profile must be production", "provenance.profile"))
+            if not str(provenance.get("experiment_id") or "").strip():
+                issues.append(ModelCardIssue("model_card.missing_experiment_id", "provenance.experiment_id is required", "provenance.experiment_id"))
+            if not str(provenance.get("config_path") or "").strip():
+                issues.append(ModelCardIssue("model_card.missing_config_path", "provenance.config_path is required", "provenance.config_path"))
+            if not str(provenance.get("config_sha256") or "").strip():
+                issues.append(ModelCardIssue("model_card.missing_config_sha256", "provenance.config_sha256 is required", "provenance.config_sha256"))
+            if str(provenance.get("code_revision") or "").strip().lower() in {"", "unknown"}:
+                issues.append(ModelCardIssue("model_card.missing_code_revision", "provenance.code_revision is required", "provenance.code_revision"))
+            training = provenance.get("training")
+            checkpoint = training.get("checkpoint") if isinstance(training, dict) else None
+            if not isinstance(checkpoint, dict) or not str(checkpoint.get("sha256") or "").strip():
+                issues.append(ModelCardIssue("model_card.missing_checkpoint_provenance", "provenance.training.checkpoint.sha256 is required", "provenance.training.checkpoint"))
+            export = provenance.get("export")
+            if not isinstance(export, dict) or export.get("onnx_source") != "external_command":
+                issues.append(ModelCardIssue("model_card.untrusted_onnx_source", "provenance.export.onnx_source must be external_command", "provenance.export.onnx_source"))
+            evaluation = provenance.get("evaluation")
+            if not isinstance(evaluation, dict) or evaluation.get("metrics_source") != "measured":
+                issues.append(ModelCardIssue("model_card.untrusted_metrics_source", "provenance.evaluation.metrics_source must be measured", "provenance.evaluation.metrics_source"))
+        thresholds = data.get("metric_thresholds")
+        if not isinstance(thresholds, dict) or not thresholds:
+            issues.append(ModelCardIssue("model_card.missing_metric_thresholds", "metric_thresholds is required for a production model package", "metric_thresholds"))
+        dataset = data.get("dataset", {})
+        if isinstance(dataset, dict):
+            for split in ("train", "val", "test"):
+                value = str(dataset.get(split) or "")
+                if not value or value in {"dataset_v0.0.0", "dataset_test_v0.0.0"}:
+                    issues.append(ModelCardIssue("model_card.placeholder_dataset", f"dataset.{split} must identify a real dataset version", f"dataset.{split}"))
+        if isinstance(limitations, list) and any("fill in" in str(item).lower() for item in limitations):
+            issues.append(ModelCardIssue("model_card.placeholder_limitations", "limitations must not contain release placeholders", "limitations"))
 
     return ModelCardValidation(path=resolved, ok=not issues, data=data, issues=issues)
 

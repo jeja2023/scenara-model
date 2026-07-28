@@ -35,3 +35,7 @@ export:
   format: onnx
   precision: fp32
 
+package:
+  profile: smoke
+  limitations:
+    - Synthetic pipeline artifact for smoke testing only; it does not contain trained weights.

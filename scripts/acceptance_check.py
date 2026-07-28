@@ -58,7 +58,7 @@ def main() -> int:
         run([sys.executable, "scripts/export_onnx.py", "--config", "configs/experiments/reference_identity.yml"]),
         run([sys.executable, "scripts/evaluate.py", "--config", "configs/experiments/reference_identity.yml"]),
         run([sys.executable, "scripts/run_pipeline.py", "--config", "configs/experiments/detection_yolo_baseline.yml", "--package"]),
-        run([sys.executable, "scripts/validate_model_package.py", "shared-models", "--allow-missing-sidecars", "--allow-missing-examples"]),
+        run([sys.executable, "scripts/validate_model_package.py", "shared-models", "--strict-hash", "--strict-onnx"]),
         run([sys.executable, "scripts/hash_artifact.py", "MODEL_RND_TRAINING_PLAN.md"]),
         run([sys.executable, "-c", "import sys; sys.path.insert(0, 'src'); from vision_model_lab.api import app; print(app.title)"]),
     ])

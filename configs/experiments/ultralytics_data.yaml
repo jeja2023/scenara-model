@@ -1,0 +1,7 @@
+# Deployment-owned dataset layout. Populate data/datasets/person_detection before training.
+path: data/datasets/person_detection
+train: images/train
+val: images/val
+test: images/test
+names:
+  0: person

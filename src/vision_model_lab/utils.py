@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 import threading
 from collections.abc import Iterable
 from pathlib import Path
@@ -26,8 +28,17 @@ def read_yaml(path: str | Path) -> dict[str, Any]:
 def write_yaml(path: str | Path, data: dict[str, Any]) -> None:
     resolved = Path(path)
     resolved.parent.mkdir(parents=True, exist_ok=True)
-    with resolved.open("w", encoding="utf-8") as handle:
-        yaml.safe_dump(data, handle, allow_unicode=True, sort_keys=False)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=resolved.parent, prefix=f".{resolved.name}.", suffix=".tmp", delete=False) as handle:
+            temporary = Path(handle.name)
+            yaml.safe_dump(data, handle, allow_unicode=True, sort_keys=False)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, resolved)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
@@ -48,12 +59,27 @@ def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
     return rows
 
 
+def read_json(path: str | Path) -> Any:
+    resolved = as_path(path)
+    with resolved.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
 def write_json(path: str | Path, data: Any) -> None:
     resolved = Path(path)
     resolved.parent.mkdir(parents=True, exist_ok=True)
-    with resolved.open("w", encoding="utf-8") as handle:
-        json.dump(data, handle, ensure_ascii=False, indent=2)
-        handle.write("\n")
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=resolved.parent, prefix=f".{resolved.name}.", suffix=".tmp", delete=False) as handle:
+            temporary = Path(handle.name)
+            json.dump(data, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, resolved)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 # 摘要缓存：键为路径，值为 (size, mtime_ns, digest)。

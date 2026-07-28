@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from vision_model_lab.adapters.registry import run_stage
@@ -23,21 +24,156 @@ def _base_config(workspace_tmp_path: Path, experiment_id: str) -> dict:
     }
 
 
-def _make_real_onnx_script(target: Path) -> list[str]:
+def _make_real_onnx_script(target: Path, shape: list[int] | None = None) -> list[str]:
     """构造一个外部命令：产出与合成桩结构不同的真实 ONNX（含 Add 节点）。"""
+    input_shape = shape or [1, 4]
     code = (
         "import onnx\n"
         "from onnx import TensorProto, helper\n"
         "node = helper.make_node('Add', ['input', 'input'], ['output'])\n"
         "graph = helper.make_graph([node], 'external_graph',"
-        " [helper.make_tensor_value_info('input', TensorProto.FLOAT, [1, 4])],"
-        " [helper.make_tensor_value_info('output', TensorProto.FLOAT, [1, 4])])\n"
+        f" [helper.make_tensor_value_info('input', TensorProto.FLOAT, {input_shape})],"
+        f" [helper.make_tensor_value_info('output', TensorProto.FLOAT, {input_shape})])\n"
         "model = helper.make_model(graph, producer_name='external-exporter',"
         " opset_imports=[helper.make_operatorsetid('', 17)])\n"
         "model.ir_version = 8\n"
         f"onnx.save(model, r'{target}')\n"
     )
     return [sys.executable, "-c", code]
+
+
+def test_production_package_requires_real_evidence_and_writes_provenance(workspace_tmp_path: Path) -> None:
+    config = workspace_tmp_path / "config.yml"
+    checkpoint = workspace_tmp_path / "run" / "best.pt"
+    produced_onnx = workspace_tmp_path / "run" / "best.onnx"
+    metrics = workspace_tmp_path / "run" / "metrics.json"
+    examples = workspace_tmp_path / "examples"
+    examples.mkdir()
+    (examples / "input.jpg").write_bytes(bytes.fromhex("ffd8ffe000104a46494600010101000100010000ffd9"))
+    (examples / "input.expected.json").write_text('{"predictions": [{"label": "positive", "score": 0.9}]}', encoding="utf-8")
+    for split in ("train", "val", "test"):
+        manifest = workspace_tmp_path / f"{split}.jsonl"
+        manifest.write_text(
+            f'{{"image":"s3://bucket/{split}.jpg","split":"{split}","source":"camera_01","dataset_version":"1.0.0"}}\n',
+            encoding="utf-8",
+        )
+    training_code = f"from pathlib import Path; p=Path(r'{checkpoint}'); p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(b'fresh-checkpoint')"
+    metrics_code = f"import json; p=r'{metrics}'; open(p, 'w', encoding='utf-8').write(json.dumps({{'accuracy': 0.93, 'f1': 0.91}}))"
+    payload = {
+        "experiment": {"id": "production_evidence", "task": "classification", "project": "quality"},
+        "dataset": {
+            "name": "quality_dataset",
+            "version": "1.0.0",
+            "train_manifest": str(workspace_tmp_path / "train.jsonl"),
+            "val_manifest": str(workspace_tmp_path / "val.jsonl"),
+            "test_manifest": str(workspace_tmp_path / "test.jsonl"),
+        },
+        "model": {"architecture": "resnet50", "version": "1.0.0", "input_size": [224, 224]},
+        "labels": ["negative", "positive"],
+        "training": {
+            "adapter": "torchvision_classifier",
+            "command": [sys.executable, "-c", training_code],
+            "produced_checkpoint": str(checkpoint),
+        },
+        "export": {
+            "adapter": "torchvision_classifier",
+            "artifact_name": "quality_classifier_resnet50_v1.0.0_fp32.onnx",
+            "command": _make_real_onnx_script(produced_onnx, [1, 3, 224, 224]),
+            "produced_onnx": str(produced_onnx),
+        },
+        "evaluation": {
+            "adapter": "torchvision_classifier",
+            "command": [sys.executable, "-c", metrics_code],
+            "produced_metrics": str(metrics),
+            "primary_metric": "accuracy",
+        },
+        "package": {
+            "profile": "production",
+            "examples_dir": str(examples),
+            "metric_thresholds": {"accuracy": 0.8, "f1": 0.8},
+            "limitations": ["Synthetic test fixture; replace with validated business data before release."],
+        },
+    }
+    write_yaml(config, payload)
+
+    report = run_experiment_pipeline(config, package=True, output_root=workspace_tmp_path / "packages")
+
+    assert report["status"] == "completed"
+    assert report["package"]["profile"] == "production"
+    card = __import__("yaml").safe_load(
+        (workspace_tmp_path / "packages" / "quality" / "quality_classifier_resnet50_v1.0.0_fp32.model-card.yml").read_text(encoding="utf-8")
+    )
+    assert card["metrics"] == {"accuracy": 0.93, "f1": 0.91}
+    assert card["provenance"]["export"]["onnx_source"] == "external_command"
+    assert card["provenance"]["evaluation"]["metrics_source"] == "measured"
+    assert card["provenance"]["training"]["checkpoint"]["sha256"]
+
+
+def test_production_package_rejects_synthetic_baseline(workspace_tmp_path: Path) -> None:
+    config = workspace_tmp_path / "config.yml"
+    payload = _base_config(workspace_tmp_path, "production_rejects_synthetic")
+    payload["package"] = {
+        "profile": "production",
+        "metric_thresholds": {"accuracy": 0.8},
+        "examples_dir": str(workspace_tmp_path / "examples"),
+        "limitations": ["fixture"],
+    }
+    (workspace_tmp_path / "examples").mkdir()
+    write_yaml(config, payload)
+
+    report = run_experiment_pipeline(config, package=True, output_root=workspace_tmp_path / "packages")
+
+    assert report["status"] == "failed"
+    assert report["failed_stage"] == "package"
+    assert "production training must execute" in report["failed_reason"]
+
+
+def test_production_training_rejects_stale_checkpoint(workspace_tmp_path: Path) -> None:
+    checkpoint = workspace_tmp_path / "best.pt"
+    checkpoint.write_bytes(b"stale")
+    manifests: dict[str, str] = {}
+    for split in ("train", "val"):
+        path = workspace_tmp_path / f"{split}.jsonl"
+        path.write_text(
+            f'{{"image":"s3://bucket/{split}.jpg","split":"{split}","source":"camera_01","dataset_version":"1.0.0"}}\n',
+            encoding="utf-8",
+        )
+        manifests[f"{split}_manifest"] = str(path)
+    config = workspace_tmp_path / "config.yml"
+    write_yaml(
+        config,
+        {
+            "experiment": {"id": "stale_checkpoint", "task": "classification"},
+            "dataset": {"name": "dataset", "version": "1.0.0", **manifests},
+            "model": {"architecture": "resnet50", "version": "1.0.0"},
+            "training": {
+                "adapter": "torchvision_classifier",
+                "command": [sys.executable, "-c", "pass"],
+                "produced_checkpoint": str(checkpoint),
+            },
+        },
+    )
+
+    result = run_stage("training", config)
+
+    assert result.status == "failed"
+    assert "fresh checkpoint" in result.payload["message"]
+
+
+def test_same_experiment_cannot_run_concurrently(workspace_tmp_path: Path) -> None:
+    config = workspace_tmp_path / "config.yml"
+    payload = _base_config(workspace_tmp_path, "exclusive_run")
+    payload["training"]["command"] = [sys.executable, "-c", "import time; time.sleep(1)"]
+    write_yaml(config, payload)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(run_experiment_pipeline, config) for _ in range(2)]
+        reports = [future.result(timeout=10) for future in futures]
+
+    assert sorted(report["status"] for report in reports) == ["completed", "failed"]
+    failed = next(report for report in reports if report["status"] == "failed")
+    assert failed["failed_stage"] == "job"
+    assert "already active" in failed["failed_reason"]
 
 
 def test_external_export_result_is_not_overwritten_by_synthetic_model(workspace_tmp_path: Path) -> None:

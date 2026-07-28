@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vision-model-lab"
-version = "0.7.0"
+version = "0.8.0"
 description = "Model research, evaluation, ONNX export, and delivery tooling for vision systems."
 requires-python = ">=3.11"
 dependencies = [

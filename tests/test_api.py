@@ -302,13 +302,15 @@ def test_async_pipeline_job_can_be_cancelled(workspace_tmp_path: Path) -> None:
     assert response.status_code == 200
     job_id = response.json()["job"]["id"]
 
+    job_status = "not observed"
     for _ in range(50):
         job = client.get(f"/api/pipelines/jobs/{job_id}").json()["job"]
+        job_status = job["status"]
         if job["status"] == "running":
             break
         time.sleep(0.1)
     else:
-        raise AssertionError(f"job never started: {job['status']}")
+        raise AssertionError(f"job never started: {job_status}")
 
     cancel_response = client.post(f"/api/pipelines/jobs/{job_id}/cancel")
     assert cancel_response.status_code == 200
@@ -345,8 +347,15 @@ def test_mlops_registry_release_and_rollout_endpoints() -> None:
         json={
             "package_dir": "shared-models/cross_camera_tracking",
             "model_id": "person_detector_yolov8n_v1.0.0_fp32.onnx",
+            "stage": "smoke",
+        },
+    )
+    candidate_response = client.post(
+        "/api/models/registry",
+        json={
+            "package_dir": "shared-models/cross_camera_tracking",
+            "model_id": "person_detector_yolov8n_v1.0.0_fp32.onnx",
             "stage": "candidate",
-            "metrics": {"map50": 0.5},
         },
     )
     approval_response = client.post(
@@ -367,9 +376,11 @@ def test_mlops_registry_release_and_rollout_endpoints() -> None:
 
     assert dataset_response.status_code == 200
     assert model_response.status_code == 200
-    assert approval_response.status_code == 200
-    assert rollout_response.status_code == 200
+    assert model_response.json()["model"]["model_id"] == "cross_camera_tracking/person_detector_yolov8n_v1.0.0_fp32.onnx"
+    assert candidate_response.status_code == 400
+    assert approval_response.status_code == 400
+    assert rollout_response.status_code == 400
     assert client.get("/api/datasets/versions").json()["datasets"]
     assert client.get("/api/models/registry").json()["models"]
-    assert client.get("/api/releases/approvals").json()["approvals"]
-    assert client.get("/api/deployments/rollouts").json()["rollouts"]
+    assert client.get("/api/releases/approvals").json()["approvals"] == []
+    assert client.get("/api/deployments/rollouts").json()["rollouts"] == []

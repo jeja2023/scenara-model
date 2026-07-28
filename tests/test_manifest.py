@@ -45,3 +45,16 @@ def test_validate_manifest_enforces_min_split_counts_and_allowed_labels(workspac
 
     assert not result.ok
     assert {issue.code for issue in result.issues} >= {"manifest.label_not_allowed", "manifest.min_split_count"}
+
+
+def test_validate_manifest_can_check_local_images(workspace_tmp_path: Path) -> None:
+    manifest = workspace_tmp_path / "local.jsonl"
+    manifest.write_text(
+        '{"image":"images/missing.jpg","split":"train","source":"camera","dataset_version":"1.0.0"}\n',
+        encoding="utf-8",
+    )
+
+    result = validate_manifest(manifest, check_local_files=True)
+
+    assert not result.ok
+    assert "manifest.image_not_found" in {issue.code for issue in result.issues}

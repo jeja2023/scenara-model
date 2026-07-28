@@ -20,3 +20,16 @@ Git 中只提交：
 - 数据集配置。
 - 质检报告。
 
+Ultralytics 生产示例使用 `configs/experiments/ultralytics_data.yaml`，部署时需要准备：
+
+```text
+data/datasets/person_detection/
+  images/{train,val,test}/
+  labels/{train,val,test}/
+data/manifests/person_detection_{train,val,test}_v1.jsonl
+data/model_examples/person_detector_yolov8n_v1.1.0_fp32/
+  input_001.jpg
+  input_001.expected.json
+```
+
+这些路径缺失、manifest 非法或生产指标未达到配置阈值时，流水线会在打包前失败。

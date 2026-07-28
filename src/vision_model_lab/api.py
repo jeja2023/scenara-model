@@ -251,6 +251,7 @@ class ManifestValidationRequest(ApiModel):
     path: str
     min_split_counts: dict[str, int] = Field(default_factory=dict)
     allowed_labels: list[str] = Field(default_factory=list)
+    check_local_files: bool = False
 
 
 class ContractValidationRequest(ApiModel):
@@ -303,20 +304,20 @@ class DatasetVersionRegisterRequest(ApiModel):
 class ModelRegistryRegisterRequest(ApiModel):
     package_dir: str
     model_id: str | None = None
-    stage: str = "candidate"
+    stage: str = Field(default="candidate", pattern="^(smoke|candidate|staging|production|archived)$")
     metrics: dict[str, float] = Field(default_factory=dict)
 
 
 class ReleaseApprovalRequest(ApiModel):
     path: str
-    status: str = "pending"
+    status: str = Field(default="pending", pattern="^(pending|approved|rejected)$")
 
 
 class DeploymentRolloutRequest(ApiModel):
     model_id: str
-    environment: str = "production"
-    strategy: str = "gray"
-    status: str = "planned"
+    environment: str = Field(default="production", pattern="^(development|staging|production)$")
+    strategy: str = Field(default="gray", pattern="^(immediate|gray|canary)$")
+    status: str = Field(default="planned", pattern="^(planned|running|completed|rolled_back|failed|cancelled)$")
     traffic_percent: int = Field(default=0, ge=0, le=100)
     rollback_target: str | None = None
 
@@ -691,6 +692,7 @@ def validate_manifest_endpoint(request: ManifestValidationRequest) -> dict[str, 
         workspace_path(request.path),
         min_split_counts=request.min_split_counts or None,
         allowed_labels=request.allowed_labels or None,
+        check_local_files=request.check_local_files,
     )
     return {"manifest": result.to_dict()}
 
@@ -894,6 +896,7 @@ def register_dataset_version(request: DatasetVersionRegisterRequest) -> dict[str
         manifest_path,
         min_split_counts=request.min_split_counts or None,
         allowed_labels=request.allowed_labels or None,
+        check_local_files=True,
     )
     if not validation.ok:
         raise HTTPException(status_code=400, detail={"manifest": validation.to_dict()})
@@ -922,17 +925,38 @@ def list_model_registry(limit: int = Query(default=100, ge=1, le=500)) -> dict[s
 @app.post("/api/models/registry", dependencies=[Depends(require_auth)])
 def register_model(request: ModelRegistryRegisterRequest) -> dict[str, Any]:
     package_dir = workspace_path(request.package_dir)
-    validation = validate_model_package(package_dir, model_id=request.model_id, strict_hash=True, strict_examples=True, strict_onnx=False)
+    validation = validate_model_package(
+        package_dir,
+        model_id=request.model_id,
+        strict_hash=True,
+        strict_examples=True,
+        strict_onnx=True,
+        strict_provenance=request.stage != "smoke",
+    )
     if not validation.ok or validation.model_file is None:
         raise HTTPException(status_code=400, detail={"validation": validation.to_dict()})
     artifact = parse_artifact_name(validation.model_file.name)
     task = "model"
+    card_metrics: dict[str, float] = {}
     if validation.model_card and validation.model_card.exists():
         card = read_yaml(validation.model_card)
         model_section = card.get("model", {}) if isinstance(card, dict) else {}
         if isinstance(model_section, dict):
             task = str(model_section.get("task") or task)
-    model_id = request.model_id or f"{workspace_relative(package_dir)}/{validation.model_file.name}"
+        raw_metrics = card.get("metrics", {}) if isinstance(card, dict) else {}
+        if isinstance(raw_metrics, dict):
+            card_metrics = {
+                str(name): float(value)
+                for name, value in raw_metrics.items()
+                if isinstance(value, (int, float)) and not isinstance(value, bool)
+            }
+    if request.metrics and request.metrics != card_metrics:
+        raise HTTPException(status_code=400, detail="Registry metrics must match the packaged model-card metrics")
+    try:
+        package_namespace = package_dir.resolve().relative_to(workspace_path("shared-models")).as_posix()
+    except ValueError:
+        package_namespace = workspace_relative(package_dir).replace("\\", "/")
+    model_id = "/".join(part for part in (package_namespace, validation.model_file.name) if part and part != ".")
     model = STORE.upsert_model_registry_entry(
         {
             "model_id": model_id,
@@ -940,7 +964,7 @@ def register_model(request: ModelRegistryRegisterRequest) -> dict[str, Any]:
             "artifact_name": validation.model_file.name,
             "version": artifact.version,
             "task": task,
-            "metrics": request.metrics,
+            "metrics": card_metrics,
             "stage": request.stage,
         }
     )
@@ -961,9 +985,16 @@ def record_release_approval(request: ReleaseApprovalRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail={"contract": validation.to_dict()})
     data = read_yaml(decision_path)
     decision = data.get("decision", {}) if isinstance(data, dict) else {}
+    model_id = str(decision.get("model") or "").replace("\\", "/")
+    try:
+        registered_model = STORE.get_model_registry_entry(model_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=f"Model is not registered: {model_id}") from exc
+    if request.status == "approved" and registered_model.get("stage") == "smoke":
+        raise HTTPException(status_code=400, detail="Smoke-stage models cannot receive a release approval")
     approval = STORE.record_release_approval(
         {
-            "model_id": str(decision.get("model")),
+            "model_id": model_id,
             "recommendation": str(decision.get("recommendation")),
             "status": request.status,
             "decision": decision,
@@ -980,6 +1011,23 @@ def list_deployment_rollouts(limit: int = Query(default=100, ge=1, le=500)) -> d
 
 @app.post("/api/deployments/rollouts", dependencies=[Depends(require_auth)])
 def create_deployment_rollout(request: DeploymentRolloutRequest) -> dict[str, Any]:
+    if request.environment in {"staging", "production"}:
+        try:
+            registered_model = STORE.get_model_registry_entry(request.model_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=f"Model is not registered: {request.model_id}") from exc
+        if registered_model.get("stage") == "smoke":
+            raise HTTPException(status_code=400, detail="Smoke-stage models cannot roll out to staging or production")
+        approvals = STORE.list_release_approvals(limit=500)
+        if not any(item.get("model_id") == request.model_id and item.get("status") == "approved" for item in approvals):
+            raise HTTPException(status_code=400, detail="An approved release is required before staging or production rollout")
+        if request.environment == "production":
+            if not request.rollback_target:
+                raise HTTPException(status_code=400, detail="A rollback_target is required for production rollout")
+            try:
+                STORE.get_model_registry_entry(request.rollback_target)
+            except KeyError as exc:
+                raise HTTPException(status_code=400, detail=f"Rollback target is not registered: {request.rollback_target}") from exc
     rollout = STORE.upsert_deployment_rollout(request.model_dump())
     STORE.record_audit_event(
         actor="api",

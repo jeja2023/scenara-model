@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import signal
 import subprocess
 import threading
@@ -12,8 +13,9 @@ from pathlib import Path
 from typing import Any
 
 from vision_model_lab.adapters.base import AdapterResult
+from vision_model_lab.datasets.manifest import validate_manifest
 from vision_model_lab.export.onnx_checks import check_onnx_loadable
-from vision_model_lab.utils import ensure_dir, read_yaml, write_json
+from vision_model_lab.utils import ensure_dir, read_yaml, sha256_file, write_json
 
 LogLineSink = Callable[[str, str], None]
 """外部命令逐行日志回调：(stream, line)。"""
@@ -378,6 +380,82 @@ def _resolve_workspace_file(path: str | Path) -> Path:
     return resolved
 
 
+def _file_fingerprint(path: Path | None) -> dict[str, Any] | None:
+    if path is None or not path.exists() or not path.is_file():
+        return None
+    stat = path.stat()
+    return {
+        "path": str(path),
+        "size": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+        "sha256": sha256_file(path, use_cache=False),
+    }
+
+
+def _artifact_is_fresh(before: dict[str, Any] | None, after: dict[str, Any] | None) -> bool:
+    if after is None:
+        return False
+    return before is None or before.get("sha256") != after.get("sha256") or before.get("mtime_ns") != after.get("mtime_ns")
+
+
+def _atomic_copy_file(source: Path, destination: Path) -> None:
+    temporary = destination.with_name(f".{destination.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        shutil.copy2(source, temporary)
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _failed_result(
+    report_path: Path,
+    *,
+    adapter: str,
+    task: str,
+    stage: str,
+    config_path: str | Path,
+    message: str,
+    detail: dict[str, Any] | None = None,
+) -> AdapterResult:
+    extra = detail or {}
+    report = {
+        "status": "failed",
+        "adapter": adapter,
+        "task": task,
+        "stage": stage,
+        "config": str(config_path),
+        "message": message,
+        **extra,
+    }
+    write_json(report_path, report)
+    return AdapterResult("failed", report_path, {"report": str(report_path), "message": message, **extra})
+
+
+def _training_manifest_issues(config: dict[str, Any]) -> list[str]:
+    dataset = config.get("dataset", {})
+    if not isinstance(dataset, dict):
+        return ["dataset must be an object"]
+    issues: list[str] = []
+    for split, key in (("train", "train_manifest"), ("val", "val_manifest")):
+        value = dataset.get(key)
+        if not value:
+            issues.append(f"dataset.{key} is required for a production training adapter")
+            continue
+        try:
+            path = _resolve_workspace_file(str(value))
+        except ValueError as exc:
+            issues.append(str(exc))
+            continue
+        if not path.exists():
+            issues.append(f"dataset.{key} was not found: {path}")
+            continue
+        validation = validate_manifest(path, min_split_counts={split: 1}, check_local_files=True)
+        if not validation.ok:
+            codes = ", ".join(sorted({issue.code for issue in validation.issues}))
+            issues.append(f"dataset.{key} is invalid ({codes}): {path}")
+    return issues
+
+
 def _read_produced_metrics(evaluation_config: dict[str, Any]) -> tuple[dict[str, float] | None, str | None]:
     """回读外部评估命令产出的真实指标文件；返回 (metrics, error)。"""
     produced = evaluation_config.get("produced_metrics") or evaluation_config.get("metrics_file")
@@ -416,6 +494,7 @@ class LocalTaskAdapter:
     default_metrics: dict[str, float]
     default_labels: list[str]
     output_shape: list[int]
+    requires_external_artifacts: bool = False
 
     def train(
         self,
@@ -430,10 +509,72 @@ class LocalTaskAdapter:
         if should_cancel and should_cancel():
             return _cancelled_result(report_path, adapter=self.name, stage="training", config_path=config_path, message="Training cancelled before execution.")
         training = config.get("training", {})
+        if not isinstance(training, dict):
+            return _failed_result(
+                report_path,
+                adapter=self.name,
+                task=self.task,
+                stage="training",
+                config_path=config_path,
+                message="training must be an object.",
+            )
+        external_command = training.get("command")
+        checkpoint_value = training.get("produced_checkpoint") or training.get("checkpoint_file")
+        checkpoint_path: Path | None = None
+        checkpoint_before: dict[str, Any] | None = None
+        if checkpoint_value:
+            try:
+                checkpoint_path = _resolve_workspace_file(str(checkpoint_value))
+            except ValueError as exc:
+                return _failed_result(
+                    report_path,
+                    adapter=self.name,
+                    task=self.task,
+                    stage="training",
+                    config_path=config_path,
+                    message=str(exc),
+                )
+            checkpoint_before = _file_fingerprint(checkpoint_path)
+        if self.requires_external_artifacts:
+            preflight_issues = _training_manifest_issues(config)
+            if not external_command:
+                preflight_issues.append("training.command is required for a production training adapter")
+            if checkpoint_path is None:
+                preflight_issues.append("training.produced_checkpoint is required for a production training adapter")
+            if preflight_issues:
+                return _failed_result(
+                    report_path,
+                    adapter=self.name,
+                    task=self.task,
+                    stage="training",
+                    config_path=config_path,
+                    message="Training preflight failed.",
+                    detail={"preflight_issues": preflight_issues},
+                )
         status = "completed"
         message = "Local baseline recorded a reproducible run; replace training.command for framework training."
         external_result: dict[str, Any] | None = None
-        if external_command := training.get("command") if isinstance(training, dict) else None:
+        preflight_result: dict[str, Any] | None = None
+        checkpoint: dict[str, Any] | None = None
+        if external_command:
+            if preflight_command := training.get("preflight_command"):
+                preflight_result = _run_external_command(
+                    preflight_command,
+                    cwd=_command_cwd(training),
+                    stage="training_preflight",
+                    should_cancel=should_cancel,
+                    log_sink=log_sink,
+                )
+                if not preflight_result.get("ok"):
+                    return _failed_result(
+                        report_path,
+                        adapter=self.name,
+                        task=self.task,
+                        stage="training",
+                        config_path=config_path,
+                        message="Training runtime preflight failed.",
+                        detail={"preflight": preflight_result},
+                    )
             external_result = _run_external_command(
                 external_command,
                 cwd=_command_cwd(training),
@@ -449,6 +590,14 @@ class LocalTaskAdapter:
             else:
                 status = "failed"
                 message = "External training command failed."
+            if status == "completed" and checkpoint_path is not None:
+                checkpoint = _file_fingerprint(checkpoint_path)
+                if checkpoint is None:
+                    status = "failed"
+                    message = f"training.command completed but produced_checkpoint was not found: {checkpoint_path}"
+                elif not _artifact_is_fresh(checkpoint_before, checkpoint):
+                    status = "failed"
+                    message = f"training.command did not produce a fresh checkpoint: {checkpoint_path}"
         if should_cancel and should_cancel() and status != "cancelled":
             return _cancelled_result(report_path, adapter=self.name, stage="training", config_path=config_path, message="Training cancelled before report finalization.")
         report = {
@@ -463,10 +612,18 @@ class LocalTaskAdapter:
         }
         if external_result:
             report["external"] = external_result
+        if preflight_result:
+            report["preflight"] = preflight_result
+        if checkpoint:
+            report["checkpoint"] = checkpoint
         write_json(report_path, report)
         payload: dict[str, Any] = {"report": str(report_path), "message": message}
         if external_result:
             payload["external"] = external_result
+        if preflight_result:
+            payload["preflight"] = preflight_result
+        if checkpoint:
+            payload["checkpoint"] = checkpoint
         return AdapterResult(status=status, path=report_path, payload=payload)
 
     def export(
@@ -489,6 +646,38 @@ class LocalTaskAdapter:
         external_command = export_config.get("command")
         reuse_existing = bool(export_config.get("reuse_existing", False))
         external_result: dict[str, Any] | None = None
+        produced = export_config.get("produced_onnx")
+        produced_path: Path | None = None
+        produced_before: dict[str, Any] | None = None
+        if produced:
+            try:
+                produced_path = _resolve_workspace_file(str(produced))
+            except ValueError as exc:
+                return _failed_result(
+                    report_path,
+                    adapter=self.name,
+                    task=self.task,
+                    stage="export",
+                    config_path=config_path,
+                    message=str(exc),
+                )
+            produced_before = _file_fingerprint(produced_path)
+        if self.requires_external_artifacts:
+            preflight_issues: list[str] = []
+            if not external_command:
+                preflight_issues.append("export.command is required for a production export adapter")
+            if produced_path is None:
+                preflight_issues.append("export.produced_onnx is required for a production export adapter")
+            if preflight_issues:
+                return _failed_result(
+                    report_path,
+                    adapter=self.name,
+                    task=self.task,
+                    stage="export",
+                    config_path=config_path,
+                    message="Export preflight failed.",
+                    detail={"preflight_issues": preflight_issues},
+                )
 
         # 只有显式声明 reuse_existing 时才复用已有 ONNX，避免改配置重跑后静默交付旧模型。
         if reuse_existing and not external_command and output_path.exists():
@@ -518,7 +707,11 @@ class LocalTaskAdapter:
                 "message": "Reused existing loadable ONNX artifact (export.reuse_existing=true).",
             }
             write_json(report_path, report)
-            return AdapterResult(status="completed", path=output_path, payload={"onnx": str(output_path), "report": str(report_path)})
+            return AdapterResult(
+                status="completed",
+                path=output_path,
+                payload={"onnx": str(output_path), "report": str(report_path), "onnx_source": "reused", "output_format": self.output_format},
+            )
 
         if external_command:
             external_result = _run_external_command(
@@ -550,15 +743,9 @@ class LocalTaskAdapter:
                 }
                 write_json(report_path, report)
                 return AdapterResult("failed", report_path, {"report": str(report_path), "external": external_result})
-            produced = export_config.get("produced_onnx")
-            if produced:
-                try:
-                    produced_path = _resolve_workspace_file(str(produced))
-                except ValueError as exc:
-                    report = {"status": "failed", "adapter": self.name, "task": self.task, "message": str(exc), "external": external_result}
-                    write_json(report_path, report)
-                    return AdapterResult("failed", report_path, {"report": str(report_path), "external": external_result})
-                if not produced_path.exists():
+            produced_fingerprint = _file_fingerprint(produced_path)
+            if produced_path is not None:
+                if produced_fingerprint is None:
                     report = {
                         "status": "failed",
                         "adapter": self.name,
@@ -569,8 +756,19 @@ class LocalTaskAdapter:
                     }
                     write_json(report_path, report)
                     return AdapterResult("failed", report_path, {"report": str(report_path), "external": external_result})
+                if not _artifact_is_fresh(produced_before, produced_fingerprint):
+                    report = {
+                        "status": "failed",
+                        "adapter": self.name,
+                        "task": self.task,
+                        "onnx": str(output_path),
+                        "message": f"export.command did not produce a fresh ONNX artifact: {produced_path}",
+                        "external": external_result,
+                    }
+                    write_json(report_path, report)
+                    return AdapterResult("failed", report_path, {"report": str(report_path), "external": external_result, "message": report["message"]})
                 if produced_path != output_path:
-                    output_path.write_bytes(produced_path.read_bytes())
+                    _atomic_copy_file(produced_path, output_path)
             elif not output_path.exists():
                 report = {
                     "status": "failed",
@@ -608,13 +806,21 @@ class LocalTaskAdapter:
                 "output_format": self.output_format,
                 "labels": config.get("labels", self.default_labels),
                 "onnx_source": "external_command",
+                "artifact": _file_fingerprint(output_path),
                 "external": external_result,
             }
             write_json(report_path, report)
             return AdapterResult(
                 status="completed",
                 path=output_path,
-                payload={"onnx": str(output_path), "report": str(report_path), "external": external_result},
+                payload={
+                    "onnx": str(output_path),
+                    "report": str(report_path),
+                    "onnx_source": "external_command",
+                    "output_format": self.output_format,
+                    "artifact": report["artifact"],
+                    "external": external_result,
+                },
             )
 
         # 无外部命令：生成合成基线模型（仅作为 baseline 兜底，报告中明确标注来源）。
@@ -644,7 +850,11 @@ class LocalTaskAdapter:
             "onnx_source": "synthetic_baseline",
         }
         write_json(report_path, report)
-        return AdapterResult(status="completed", path=output_path, payload={"onnx": str(output_path), "report": str(report_path)})
+        return AdapterResult(
+            status="completed",
+            path=output_path,
+            payload={"onnx": str(output_path), "report": str(report_path), "onnx_source": "synthetic_baseline", "output_format": self.output_format},
+        )
 
     def evaluate(
         self,
@@ -662,6 +872,38 @@ class LocalTaskAdapter:
         evaluation_config = config.get("evaluation", {}) if isinstance(config.get("evaluation"), dict) else {}
         external_command = evaluation_config.get("command")
         external_result: dict[str, Any] | None = None
+        metrics_value = evaluation_config.get("produced_metrics") or evaluation_config.get("metrics_file")
+        metrics_path: Path | None = None
+        metrics_before: dict[str, Any] | None = None
+        if metrics_value:
+            try:
+                metrics_path = _resolve_workspace_file(str(metrics_value))
+            except ValueError as exc:
+                return _failed_result(
+                    report_path,
+                    adapter=self.name,
+                    task=self.task,
+                    stage="evaluation",
+                    config_path=config_path,
+                    message=str(exc),
+                )
+            metrics_before = _file_fingerprint(metrics_path)
+        if self.requires_external_artifacts:
+            preflight_issues: list[str] = []
+            if not external_command:
+                preflight_issues.append("evaluation.command is required for a production evaluation adapter")
+            if metrics_path is None:
+                preflight_issues.append("evaluation.produced_metrics is required for a production evaluation adapter")
+            if preflight_issues:
+                return _failed_result(
+                    report_path,
+                    adapter=self.name,
+                    task=self.task,
+                    stage="evaluation",
+                    config_path=config_path,
+                    message="Evaluation preflight failed.",
+                    detail={"preflight_issues": preflight_issues},
+                )
         if onnx_path is None:
             architecture = str(config.get("model", {}).get("architecture", self.task))
             onnx_path = _experiment_dir(config) / "export" / _artifact_name(config, self.task, architecture)
@@ -707,6 +949,16 @@ class LocalTaskAdapter:
                 }
                 write_json(report_path, report)
                 return AdapterResult("failed", report_path, {"report": str(report_path), "external": external_result})
+            if metrics_path is not None and not _artifact_is_fresh(metrics_before, _file_fingerprint(metrics_path)):
+                return _failed_result(
+                    report_path,
+                    adapter=self.name,
+                    task=self.task,
+                    stage="evaluation",
+                    config_path=config_path,
+                    message=f"evaluation.command did not produce a fresh metrics artifact: {metrics_path}",
+                    detail={"external": external_result},
+                )
         if should_cancel and should_cancel():
             return _cancelled_result(report_path, adapter=self.name, stage="evaluation", config_path=config_path, message="Evaluation cancelled before report finalization.")
         check = check_onnx_loadable(onnx_path)
@@ -812,6 +1064,7 @@ ULTRALYTICS_YOLO_ADAPTER = LocalTaskAdapter(
     default_metrics={"map50": 0.0, "precision": 0.0, "recall": 0.0},
     default_labels=["person"],
     output_shape=[1, 6],
+    requires_external_artifacts=True,
 )
 
 TORCHREID_ADAPTER = LocalTaskAdapter(
@@ -822,6 +1075,7 @@ TORCHREID_ADAPTER = LocalTaskAdapter(
     default_metrics={"map": 0.0, "rank1": 0.0},
     default_labels=["identity"],
     output_shape=[1, 128],
+    requires_external_artifacts=True,
 )
 
 TORCHVISION_CLASSIFICATION_ADAPTER = LocalTaskAdapter(
@@ -832,6 +1086,7 @@ TORCHVISION_CLASSIFICATION_ADAPTER = LocalTaskAdapter(
     default_metrics={"accuracy": 0.0, "f1": 0.0},
     default_labels=["negative", "positive"],
     output_shape=[1, 2],
+    requires_external_artifacts=True,
 )
 
 SEGMENTATION_FRAMEWORK_ADAPTER = LocalTaskAdapter(
@@ -842,4 +1097,5 @@ SEGMENTATION_FRAMEWORK_ADAPTER = LocalTaskAdapter(
     default_metrics={"miou": 0.0, "dice": 0.0},
     default_labels=["background", "target"],
     output_shape=[1, 2, 640, 640],
+    requires_external_artifacts=True,
 )

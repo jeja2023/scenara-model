@@ -43,6 +43,7 @@ def validate_manifest(
     *,
     min_split_counts: dict[str, int] | None = None,
     allowed_labels: list[str] | None = None,
+    check_local_files: bool = False,
 ) -> ManifestValidation:
     resolved = Path(path)
     issues: list[ManifestIssue] = []
@@ -75,6 +76,12 @@ def validate_manifest(
             suffix = Path(image_value.split("?", 1)[0]).suffix.lower()
             if suffix and suffix not in IMAGE_EXTENSIONS:
                 issues.append(ManifestIssue("manifest.invalid_image_extension", f"Unsupported image extension: {suffix}", index, "image"))
+            if check_local_files and "://" not in image_value:
+                image_path = Path(image_value)
+                if not image_path.is_absolute():
+                    image_path = resolved.parent / image_path
+                if not image_path.resolve().is_file():
+                    issues.append(ManifestIssue("manifest.image_not_found", f"Image file was not found: {image_path.resolve()}", index, "image"))
         elif "image" in row:
             issues.append(ManifestIssue("manifest.empty_field", "image must not be empty", index, "image"))
 

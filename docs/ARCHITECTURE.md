@@ -79,7 +79,20 @@ Storage
 - `export.reuse_existing: true`：显式声明才复用已存在的可加载 ONNX；默认每次导出都重新生成，避免改配置重跑后静默交付旧模型。
 - `evaluation.produced_metrics`：外部评估命令输出的 JSON 指标文件路径。评估成功后平台回读该文件作为真实指标并标注 `metrics_source: measured`；声明了该字段但回读失败时评估阶段直接失败。未配置外部评估时，`expected_metrics` 会被标注为 `metrics_source: declared`（自报值），发布审批链路应据此区分指标可信度。
 
+## 生产训练门禁
+
+流水线的 `package.profile` 默认为 `production`。生产包必须同时满足：
+
+- training/export/evaluation 三个阶段均由外部命令完成；训练命令必须声明并新生成 `training.produced_checkpoint`，导出命令必须声明并新生成 `export.produced_onnx`，评估命令必须声明并新生成 `evaluation.produced_metrics`。
+- `dataset.train_manifest`、`dataset.val_manifest`、`dataset.test_manifest` 存在且通过 manifest 校验；`package.examples_dir` 必须提供真实样例和期望输出。
+- `package.metric_thresholds` 非空且所有实测指标达标；指标不足或低于阈值时禁止打包。
+- 自动生成的模型卡会记录 checkpoint/ONNX/metrics 的 sha256、来源、实验 ID、配置路径和实测指标；模型卡与 ONNX 的输入 shape/dtype 不一致时禁止打包。
+
+开发和 CI 的合成 baseline 必须显式设置 `package.profile: smoke`。smoke 包可以用于验证编排和 ONNX Runtime 加载，但模型卡会标记为不可发布，模型注册接口也只允许注册到 `smoke` stage。
+
 运行时保障：外部命令 stdout/stderr 由 reader 线程逐行消费（无管道死锁），按条数或时间批量写入任务日志；阶段事件和任务退出前强制 flush。取消检查按 3 秒窗口节流并同时续写 worker 心跳；取消/超时会终止整棵进程树；子进程使用剥离平台数据库、鉴权、管理员口令和对象存储凭证后的最小环境；输出以 UTF-8 解码。
+
+`training.preflight_command` 可在训练命令前验证框架、驱动和 GPU。相同 experiment ID 同时受进程内锁和跨进程文件锁保护，CLI、同步 API 与异步 worker 不能并发覆盖同一产物目录。阶段报告与 YAML/JSON 元数据通过临时文件原子替换，进程中断不会留下半写文件。
 
 ## 任务归属与维护
 

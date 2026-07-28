@@ -36,6 +36,7 @@ def _cmd_validate_package(args: argparse.Namespace) -> int:
                     strict_sidecars=not args.allow_missing_sidecars,
                     strict_examples=not args.allow_missing_examples,
                     strict_onnx=args.strict_onnx,
+                    strict_provenance=args.strict_provenance,
                 )
                 for model_file in model_files
             ]
@@ -59,6 +60,7 @@ def _cmd_validate_package(args: argparse.Namespace) -> int:
         strict_sidecars=not args.allow_missing_sidecars,
         strict_examples=not args.allow_missing_examples,
         strict_onnx=args.strict_onnx,
+        strict_provenance=args.strict_provenance,
     )
     if args.json:
         _print_json(result.to_dict())
@@ -93,7 +95,7 @@ def _cmd_create_package(args: argparse.Namespace) -> int:
 
 
 def _cmd_validate_manifest(args: argparse.Namespace) -> int:
-    result = validate_manifest(args.path)
+    result = validate_manifest(args.path, check_local_files=args.check_local_files)
     if args.json:
         _print_json(result.to_dict())
     else:
@@ -238,6 +240,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("--model-id", help="ONNX filename relative to package_dir")
     validate_parser.add_argument("--strict-hash", action="store_true")
     validate_parser.add_argument("--strict-onnx", action="store_true")
+    validate_parser.add_argument("--strict-provenance", action="store_true")
     validate_parser.add_argument("--allow-missing-sidecars", action="store_true")
     validate_parser.add_argument("--allow-missing-examples", action="store_true")
     validate_parser.add_argument("--json", action="store_true")
@@ -262,6 +265,7 @@ def build_parser() -> argparse.ArgumentParser:
     manifest_validate_parser = manifest_subparsers.add_parser("validate", help="Validate a JSONL manifest")
     manifest_validate_parser.add_argument("path", type=Path)
     manifest_validate_parser.add_argument("--json", action="store_true")
+    manifest_validate_parser.add_argument("--check-local-files", action="store_true")
     manifest_validate_parser.set_defaults(func=_cmd_validate_manifest)
 
     contract_parser = subparsers.add_parser("contract", help="Delivery contract operations")

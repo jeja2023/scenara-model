@@ -1,15 +1,93 @@
 from __future__ import annotations
 
+import hashlib
+import os
+import threading
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from vision_model_lab.adapters.registry import run_stage
 from vision_model_lab.packaging.model_package import create_model_package, validate_model_package
+from vision_model_lab.trust import build_model_card_data, load_stage_reports, package_profile, validate_package_trust
 from vision_model_lab.utils import ensure_dir, read_jsonl, read_yaml, write_json
 
 SYNTHETIC_JPEG_BYTES = bytes.fromhex("ffd8ffe000104a46494600010101000100010000ffd9")
+
+
+def _workspace_root() -> Path:
+    return Path(os.environ.get("VMLAB_WORKSPACE", Path.cwd())).resolve()
+
+
+class PipelineAlreadyRunning(RuntimeError):
+    pass
+
+
+_PIPELINE_LOCKS: dict[str, threading.Lock] = {}
+_PIPELINE_LOCKS_GUARD = threading.Lock()
+
+
+def _pipeline_lock_key(config_path: str | Path) -> str:
+    try:
+        config = read_yaml(config_path)
+        experiment = config.get("experiment", {})
+        identity = str(experiment.get("id") or Path(config_path).resolve()) if isinstance(experiment, dict) else str(Path(config_path).resolve())
+    except Exception:  # noqa: BLE001
+        identity = str(Path(config_path).resolve())
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+
+@contextmanager
+def _pipeline_run_lock(config_path: str | Path) -> Iterator[None]:
+    key = _pipeline_lock_key(config_path)
+    with _PIPELINE_LOCKS_GUARD:
+        thread_lock = _PIPELINE_LOCKS.setdefault(key, threading.Lock())
+    if not thread_lock.acquire(blocking=False):
+        raise PipelineAlreadyRunning("A pipeline run for this experiment is already active")
+
+    lock_dir = ensure_dir(_workspace_root() / "artifacts" / "run-locks")
+    lock_path = lock_dir / f"{key}.lock"
+    handle = None
+    platform_locked = False
+    try:
+        handle = lock_path.open("a+b")
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            platform_locked = True
+        except OSError as exc:
+            raise PipelineAlreadyRunning("A pipeline run for this experiment is already active in another process") from exc
+        yield
+    finally:
+        if handle is not None:
+            if platform_locked:
+                try:
+                    handle.seek(0)
+                    if os.name == "nt":
+                        import msvcrt
+
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                    else:
+                        import fcntl
+
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                except OSError:
+                    pass
+            handle.close()
+        thread_lock.release()
 
 
 def _write_synthetic_image(path: Path) -> None:
@@ -155,7 +233,7 @@ def _run_stage_safely(
         )
 
 
-def run_experiment_pipeline(
+def _run_experiment_pipeline_unlocked(
     config_path: str | Path,
     *,
     package: bool = False,
@@ -248,7 +326,12 @@ def run_experiment_pipeline(
             )
         _emit(event_sink, "package", "started", {"output_root": str(output_root)})
         try:
-            result["package"] = create_package_from_experiment(config_path, onnx_path=onnx_path, output_root=output_root)
+            result["package"] = create_package_from_experiment(
+                config_path,
+                onnx_path=onnx_path,
+                output_root=output_root,
+                stage_payloads=stage_payloads,
+            )
         except Exception as exc:  # noqa: BLE001
             stage_payloads["package"] = {
                 "status": "failed",
@@ -260,6 +343,29 @@ def run_experiment_pipeline(
         _emit(event_sink, "package", "completed", result["package"])
     result["artifacts"] = collect_pipeline_artifacts(result)
     return result
+
+
+def run_experiment_pipeline(
+    config_path: str | Path,
+    *,
+    package: bool = False,
+    output_root: str | Path = "shared-models",
+    event_sink: PipelineEventSink | None = None,
+    should_cancel: CancelCheck | None = None,
+    log_sink: LogLineSink | None = None,
+) -> dict[str, Any]:
+    try:
+        with _pipeline_run_lock(config_path):
+            return _run_experiment_pipeline_unlocked(
+                config_path,
+                package=package,
+                output_root=output_root,
+                event_sink=event_sink,
+                should_cancel=should_cancel,
+                log_sink=log_sink,
+            )
+    except PipelineAlreadyRunning as exc:
+        return _failed_report(config_path, {}, failed_stage="job", reason=str(exc))
 
 
 def _labels_from_config(config: dict[str, Any]) -> list[str]:
@@ -278,8 +384,21 @@ def _labels_from_config(config: dict[str, Any]) -> list[str]:
 
 def _example_dir_for(config_path: str | Path, artifact_name: str) -> Path:
     config = read_yaml(config_path)
+    package = config.get("package", {}) if isinstance(config.get("package"), dict) else {}
+    configured = package.get("examples_dir")
+    if configured:
+        root = _workspace_root()
+        candidate = Path(str(configured))
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        resolved = candidate.resolve()
+        if resolved != root and root not in resolved.parents:
+            raise ValueError(f"package.examples_dir escapes workspace: {configured}")
+        if not resolved.is_dir():
+            raise FileNotFoundError(f"package.examples_dir was not found: {resolved}")
+        return resolved
     experiment_id = str(config.get("experiment", {}).get("id", "experiment"))
-    examples_dir = ensure_dir(Path("artifacts/examples") / experiment_id / artifact_name.removesuffix(".onnx"))
+    examples_dir = ensure_dir(_workspace_root() / "artifacts" / "examples" / experiment_id / artifact_name.removesuffix(".onnx"))
     image_path = examples_dir / "frame_001.jpg"
     expected_path = examples_dir / "frame_001.expected.json"
     _write_synthetic_image(image_path)
@@ -295,6 +414,7 @@ def create_package_from_experiment(
     output_root: str | Path = "shared-models",
     project_name: str | None = None,
     overwrite: bool = True,
+    stage_payloads: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     config = read_yaml(config_path)
     if onnx_path is None:
@@ -308,22 +428,46 @@ def create_package_from_experiment(
     experiment = config.get("experiment", {})
     model = config.get("model", {})
     project = project_name or str(config.get("package", {}).get("project") or experiment.get("project") or "lab_baselines")
+    stages = stage_payloads or load_stage_reports(config, workspace=_workspace_root())
+    trust = validate_package_trust(config, stages, workspace=_workspace_root())
+    if not trust.ok:
+        raise RuntimeError("Package trust gate failed: " + "; ".join(trust.issues))
     examples_dir = _example_dir_for(config_path, artifact_name)
+    labels = _labels_from_config(config)
+    labels_name = f"{onnx_path.stem}.labels.txt"
+    model_card_data = build_model_card_data(
+        config,
+        config_path=config_path,
+        stages=stages,
+        artifact_name=artifact_name,
+        labels_name=labels_name,
+        workspace=_workspace_root(),
+    )
     package_dir = create_model_package(
         output_root=output_root,
         project_name=project,
         artifact_name=artifact_name,
         model_file=onnx_path,
-        labels=_labels_from_config(config),
+        labels=labels,
         task=str(experiment.get("task") or config.get("dataset", {}).get("task") or "model"),
         architecture=str(model.get("architecture") or "baseline"),
         examples_dir=examples_dir,
+        model_card_data=model_card_data,
         overwrite=overwrite,
     )
-    validation = validate_model_package(package_dir, model_id=artifact_name, strict_hash=True, strict_onnx=True)
+    validation = validate_model_package(
+        package_dir,
+        model_id=artifact_name,
+        strict_hash=True,
+        strict_onnx=True,
+        strict_provenance=trust.profile == "production",
+    )
+    if not validation.ok:
+        raise RuntimeError("Created model package failed validation")
     return {
         "package_dir": str(package_dir),
         "artifact_name": artifact_name,
+        "profile": package_profile(config),
         "validation": validation.to_dict(),
     }
 

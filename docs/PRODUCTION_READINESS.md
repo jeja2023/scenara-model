@@ -96,6 +96,10 @@ docker compose `
 - 生产环境必须设置 `VMLAB_ADMIN_PASSWORD`，自动生成口令仅适合首次本地启动；CI 与脚本可改用 `VMLAB_AUTH_TOKEN`。
 - 多实例生产部署建议使用 PostgreSQL，并把对象存储切换为 MinIO/S3 或内部制品系统。
 - 大文件不提交 Git，只提交 manifest、配置、模板和报告。
+- 生产流水线默认拒绝合成 ONNX、自报指标和缺少 checkpoint 的训练；仅 `package.profile: smoke` 可显式放行开发基线。
+- 生产训练配置必须声明 `training.produced_checkpoint`、`export.produced_onnx` 和 `evaluation.produced_metrics`，平台会校验文件存在且在本次命令后发生变化。
+- 生产模型注册会执行严格 ONNX、输入契约、模型卡溯源和实测指标校验；`smoke` stage 不得作为发布审批的生产模型。
+- GPU 训练建议通过 `training.preflight_command` 执行 `scripts/examples/check_training_runtime.py --require-module <framework> --require-cuda`；相同 experiment ID 的并发运行会被拒绝。
 
 ## 2026-07 安全与任务运行补充
 
@@ -145,6 +149,16 @@ python -m pip check
 - `python -m compileall -q src tests migrations` 通过。
 - 异步流水线取消、Alembic baseline、普通 SQLite 迁移路径、前端取消状态反馈均有回归测试或构建校验覆盖。
 - 完整说明见 `docs/RELEASE_0.4.1.md`。
+
+## 0.8.0 发布门禁
+
+- Python 包、运行时 `__version__`、前端包版本和 lockfile 已统一为 `0.8.0`，并由 `scripts/check_versions.py` 自动校验。
+- `python -m pytest` 为 89 passed；Ruff、Pyright（0 errors）、离线 acceptance、前端 TypeScript/Vite 构建和 `pip check` 均通过。
+- 生产训练拒绝合成 ONNX、自报指标、缺少 checkpoint、缺少真实 manifest、过期制品和未通过 runtime preflight 的环境。
+- 生产模型包严格校验 ONNX、输入 shape/dtype、SHA256、labels、examples、模型卡和训练溯源；模型包文件使用原子替换写入。
+- `smoke` 模型不能注册为 candidate/staging/production，不能获得 release approval，也不能执行 staging/production rollout。
+- 当前验收环境为 CPU-only 且没有真实业务数据，因此仅完成流程拒绝和 smoke 回归验证；真实 GPU 训练仍需部署侧提供数据与 CUDA 环境。
+- 完整说明见 `docs/RELEASE_0.8.0.md`。
 
 ## 0.7.0 发布门禁
 

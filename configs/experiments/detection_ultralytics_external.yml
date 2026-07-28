@@ -14,6 +14,7 @@ dataset:
   version: 1.0.0
   train_manifest: data/manifests/person_detection_train_v1.jsonl
   val_manifest: data/manifests/person_detection_val_v1.jsonl
+  test_manifest: data/manifests/person_detection_test_v1.jsonl
 
 model:
   architecture: yolov8n
@@ -26,11 +27,18 @@ labels:
 
 training:
   adapter: ultralytics_yolo
+  preflight_command:
+    - python
+    - scripts/examples/check_training_runtime.py
+    - --require-module
+    - ultralytics
+    - --require-module
+    - torch
+    - --require-cuda
   # 外部训练命令：stdout/stderr 会逐行写入任务日志，训练期间可在管理台实时查看。
   command:
-    - python
-    - -m
-    - ultralytics
+    - yolo
+    - detect
     - train
     - model=yolov8n.pt
     - data=configs/experiments/ultralytics_data.yaml
@@ -38,6 +46,8 @@ training:
     - batch=16
     - project=experiments/local_runs/person_detector_ultralytics_20260716_001
     - name=train
+    - exist_ok=True
+  produced_checkpoint: experiments/local_runs/person_detector_ultralytics_20260716_001/train/weights/best.pt
 
 export:
   adapter: ultralytics_yolo
@@ -46,9 +56,7 @@ export:
   precision: fp32
   # 外部导出命令产出真实 ONNX；平台复制到目标路径并立即校验，绝不覆盖为合成模型。
   command:
-    - python
-    - -m
-    - ultralytics
+    - yolo
     - export
     - model=experiments/local_runs/person_detector_ultralytics_20260716_001/train/weights/best.pt
     - format=onnx
@@ -67,4 +75,14 @@ evaluation:
     - experiments/local_runs/person_detector_ultralytics_20260716_001/train/weights/best.pt
     - --output
     - experiments/local_runs/person_detector_ultralytics_20260716_001/eval/metrics.json
+    - --data
+    - configs/experiments/ultralytics_data.yaml
   produced_metrics: experiments/local_runs/person_detector_ultralytics_20260716_001/eval/metrics.json
+
+package:
+  profile: production
+  examples_dir: data/model_examples/person_detector_yolov8n_v1.1.0_fp32
+  metric_thresholds:
+    map50: 0.50
+  limitations:
+    - Validate low-light, occlusion, and camera-specific false positives before release.

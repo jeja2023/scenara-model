@@ -37,9 +37,10 @@ def main() -> int:
             problems.append(f'frontend/package-lock.json packages[""] = {root_entry.get("version")}')
 
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    latest = re.search(r"^## \[([^\]]+)\]", changelog, re.MULTILINE)
-    if latest is None or latest.group(1) != expected:
-        problems.append(f"CHANGELOG.md latest = {latest.group(1) if latest else 'missing'}")
+    changelog_versions = re.findall(r"^## \[([^\]]+)\]", changelog, re.MULTILINE)
+    latest_published = next((version for version in changelog_versions if version.lower() != "unreleased"), None)
+    if latest_published != expected:
+        problems.append(f"CHANGELOG.md latest published = {latest_published or 'missing'}")
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     if f"当前版本：`{expected}`" not in readme:

@@ -50,4 +50,9 @@ export:
   artifact_name: person_detector_yolov8n_v1.0.0_fp32.onnx
   format: onnx
   precision: fp32
+
+package:
+  profile: smoke
+  limitations:
+    - Synthetic pipeline artifact for smoke testing only; it does not contain trained weights.
   dynamic_batch: false

@@ -33,6 +33,9 @@ metrics:
   latency_ms:
     gpu: 0.0
 
+metric_thresholds:
+  map50: 0.50
+
 deployment:
   runtime: onnxruntime
   min_gpu_memory_mb: 0
@@ -42,3 +45,20 @@ deployment:
 limitations:
   - "低照度和严重遮挡场景需要继续补充数据。"
 
+provenance:
+  profile: production
+  experiment_id: "replace-with-experiment-id"
+  config_path: "replace-with-config-path"
+  config_sha256: "replace-with-config-sha256"
+  code_revision: "replace-with-git-commit"
+  training:
+    adapter: "replace-with-adapter"
+    checkpoint:
+      path: "replace-with-checkpoint-path"
+      sha256: "replace-with-checkpoint-sha256"
+  export:
+    onnx_source: external_command
+    report: "replace-with-export-report"
+  evaluation:
+    metrics_source: measured
+    report: "replace-with-evaluation-report"

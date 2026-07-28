@@ -2,6 +2,46 @@
 
 本文件记录 `vision-model-lab` 的主要功能变更、交付状态和验证结果。格式参考 Keep a Changelog，版本号遵循语义化版本。
 
+## [Unreleased]
+
+## [0.8.0] - 2026-07-28
+
+本版本将训练、导出、评估和发布链路提升为可审计的生产制品流程；开发基线与真实模型明确分离，缺少真实训练产物时不会生成可发布模型。
+
+### 生产训练信任链
+
+- `package.profile` 默认使用 `production`；生产训练强制要求外部 checkpoint、外部 ONNX、实测 metrics、train/val/test manifest、真实样例和非空指标阈值。
+- 外部训练、导出和评估命令增加 checkpoint/ONNX/metrics 的 SHA256、mtime 和本次运行新鲜度校验，拒绝“命令成功但产物未更新”的假成功。
+- 模型卡自动记录数据集版本、输入契约、实测指标、阈值、checkpoint/ONNX 来源、实验配置哈希、代码 revision 和训练命令。
+- 生产模型包执行严格 ONNX、输入 shape/dtype、SHA256、labels、examples 和模型卡溯源校验；模型文件、侧车文件和示例文件采用原子替换写入。
+
+### 发布与运行可靠性
+
+- `smoke` 仅用于开发基线，不得注册为 candidate/staging/production，不得通过发布审批或生产 rollout。
+- 模型注册增加 candidate/staging/production 阶段约束，production rollout 必须有已审批发布和已注册 rollback target。
+- 同一 experiment ID 增加跨线程、跨进程互斥，避免重复运行覆盖训练制品。
+- 增加训练 runtime preflight，检查训练框架、Torch、CUDA 和 GPU 设备；缺失数据或 GPU 时在训练前失败并给出结构化原因。
+- 本地 manifest 可校验图像文件存在性，生产配置补齐 Ultralytics 数据布局和命令入口。
+
+### 工程、文档与验证
+
+- 新增 `src/vision_model_lab/trust.py`、训练 runtime 检查脚本和生产数据目录说明。
+- CLI 增加 `--strict-provenance` 与 `--check-local-files`，验收脚本切换为严格模型包校验。
+- 修复 Alembic、启动脚本和测试中的静态类型问题，全仓 Pyright 达到 0 errors。
+- 本版本验证：89 项 Python 测试、Ruff、Pyright、前端 TypeScript/Vite 构建、离线 acceptance 和 `pip check` 全部通过。
+
+### 已知边界
+
+- 当前发布不包含真实业务数据或训练权重；CPU-only 环境不会被伪装成 GPU 训练成功。部署真实训练前必须补齐 manifest/图像、训练框架环境和 CUDA 设备。
+
+### 生产训练可信链
+
+- `package.profile` 默认使用 `production`：要求外部训练 checkpoint、外部 ONNX、实测 metrics、三份数据 manifest、真实样例、指标阈值和已填写限制；合成 baseline 仅能显式使用 `smoke`。
+- 外部训练、导出和评估产物增加前后 sha256/mtime 指纹，拒绝命令返回成功但复用旧 checkpoint、ONNX 或 metrics 的假成功。
+- 模型卡自动写入数据版本、实测指标、阈值、checkpoint 哈希、配置哈希、代码 revision 和阶段来源；生产包校验 ONNX 输入 shape/dtype 与模型卡一致。
+- 模型注册对 candidate/staging/production 强制执行 ONNX 与生产溯源校验；smoke 模型不能通过发布审批或进入 staging/production rollout，生产 rollout 必须有审批和已注册回滚目标。
+- 增加训练 runtime preflight、同 experiment 跨线程/跨进程互斥、本地 manifest 资产检查，以及 JSON/YAML 原子写入。
+
 ## [0.7.0] - 2026-07-27
 
 本次版本集中落地 2026-07 生产化审查中的 A-G 与 P1 优化，降低训练任务对元数据存储的压力，补齐多实例任务归属、周期维护、依赖与 CI 门禁，并修复部署验证中发现的镜像版本残留和严格审计失效问题。

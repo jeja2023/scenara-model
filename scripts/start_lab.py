@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 
@@ -65,7 +66,7 @@ def venv_python(root: Path) -> Path:
     return root / ".venv" / "bin" / "python"
 
 
-def run(command: list[str | Path], *, cwd: Path, quiet: bool = False) -> None:
+def run(command: Sequence[str | Path], *, cwd: Path, quiet: bool = False) -> None:
     printable = " ".join(str(part) for part in command)
     print(f"[执行] {printable}", flush=True)
     if quiet:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.sql.elements import TextClause
 
 
 revision = "20260703_040"
@@ -26,7 +27,7 @@ def _ts_type() -> sa.types.TypeEngine:
     return sa.Text()
 
 
-def _ts_default() -> sa.sql.elements.TextClause:
+def _ts_default() -> TextClause:
     if _is_postgres():
         return sa.text("CURRENT_TIMESTAMP")
     return sa.text("(strftime('%Y-%m-%dT%H:%M:%fZ','now'))")
