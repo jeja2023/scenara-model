@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from vision_model_lab.datasets.manifest import validate_manifest
+from scenara_model.datasets.manifest import validate_manifest
 
 
 def test_validate_manifest_accepts_example_manifest() -> None:

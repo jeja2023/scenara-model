@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from vision_model_lab.datasets.manifest import validate_manifest
-from vision_model_lab.naming import parse_artifact_name
-from vision_model_lab.utils import read_json, sha256_file
+from scenara_model.datasets.manifest import validate_manifest
+from scenara_model.naming import parse_artifact_name
+from scenara_model.utils import read_json, sha256_file
 
 
 @dataclass(frozen=True)

@@ -3,14 +3,14 @@
 # docker compose -f docker-compose.yml -f docker-compose.postgres.yml \
 #   --profile postgres --profile minio up --build
 services:
-  vision-model-lab:
+  scenara-model:
     environment:
-      VMLAB_METADATA_DB: postgresql://vmlab:${VMLAB_POSTGRES_PASSWORD:-vmlab-dev-only}@postgres:5432/vmlab
-      VMLAB_STORAGE_BACKEND: minio
-      VMLAB_STORAGE_URI: minio://vmlab/models
-      VMLAB_S3_ENDPOINT_URL: http://minio:9000
-      VMLAB_S3_ACCESS_KEY_ID: ${VMLAB_MINIO_ROOT_USER:-vmlab}
-      VMLAB_S3_SECRET_ACCESS_KEY: ${VMLAB_MINIO_ROOT_PASSWORD:-vmlab-dev-only}
+      SCENARA_MODEL_METADATA_DB: postgresql://scenara_model:${SCENARA_MODEL_POSTGRES_PASSWORD:-scenara-model-dev-only}@postgres:5432/scenara_model
+      SCENARA_MODEL_STORAGE_BACKEND: minio
+      SCENARA_MODEL_STORAGE_URI: minio://scenara-model/models
+      SCENARA_MODEL_S3_ENDPOINT_URL: http://minio:9000
+      SCENARA_MODEL_S3_ACCESS_KEY_ID: ${SCENARA_MODEL_MINIO_ROOT_USER:-scenara-model}
+      SCENARA_MODEL_S3_SECRET_ACCESS_KEY: ${SCENARA_MODEL_MINIO_ROOT_PASSWORD:-scenara-model-dev-only}
     depends_on:
       postgres:
         condition: service_healthy

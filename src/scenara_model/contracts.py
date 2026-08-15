@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from vision_model_lab.naming import parse_artifact_name
-from vision_model_lab.utils import read_yaml
+from scenara_model.naming import parse_artifact_name
+from scenara_model.utils import read_yaml
 
 ALLOWED_RELEASE_RECOMMENDATIONS = {"reject", "lab_only", "gray_release", "production"}
 REQUIRED_MODEL_CONFIG_FIELDS = {"task", "type", "runtime", "version", "precision", "input", "output", "artifact"}

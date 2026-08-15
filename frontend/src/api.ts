@@ -21,7 +21,7 @@ import type {
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 const API_TOKEN = import.meta.env.VITE_API_TOKEN ?? "";
 
-const TOKEN_STORAGE_KEY = "vmlab_token";
+const TOKEN_STORAGE_KEY = "scenara-model_token";
 
 export function getSessionToken(): string {
   try {

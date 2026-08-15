@@ -5,9 +5,9 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from vision_model_lab.adapters.registry import run_stage
-from vision_model_lab.pipeline import run_experiment_pipeline
-from vision_model_lab.utils import sha256_file, write_yaml
+from scenara_model.adapters.registry import run_stage
+from scenara_model.pipeline import run_experiment_pipeline
+from scenara_model.utils import sha256_file, write_yaml
 
 
 def _base_config(workspace_tmp_path: Path, experiment_id: str) -> dict:
@@ -335,7 +335,7 @@ def test_external_command_output_decodes_utf8_on_any_locale(workspace_tmp_path: 
 
 def test_log_truncation_keeps_tail(workspace_tmp_path: Path) -> None:
     """回归：日志截断必须保留尾部（Traceback 所在位置）。"""
-    from vision_model_lab.adapters.local_tasks import _truncate_log
+    from scenara_model.adapters.local_tasks import _truncate_log
 
     text = "HEAD_MARKER\n" + ("x" * 50000) + "\nTAIL_TRACEBACK_MARKER"
     truncated = _truncate_log(text, 20000)

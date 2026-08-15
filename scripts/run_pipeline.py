@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from vision_model_lab.pipeline import run_experiment_pipeline
+from scenara_model.pipeline import run_experiment_pipeline
 
 
 def main() -> int:

@@ -1,4 +1,4 @@
-# Vision Model Lab 0.7.0 发布说明
+# Scenara Model 0.7.0 发布说明
 
 发布日期：2026-07-27
 
@@ -25,17 +25,17 @@
 
 ## 生命周期与数据保留
 
-- 新增 `VMLAB_LOG_RETENTION_DAYS`，默认保留 30 天任务日志和审计事件；设为 `0` 时禁用该清理。
-- 新增 `VMLAB_MAINTENANCE_INTERVAL_SECONDS`，默认每 3600 秒执行过期会话和历史记录清理，最小允许值为 60 秒。
+- 新增 `SCENARA_MODEL_LOG_RETENTION_DAYS`，默认保留 30 天任务日志和审计事件；设为 `0` 时禁用该清理。
+- 新增 `SCENARA_MODEL_MAINTENANCE_INTERVAL_SECONDS`，默认每 3600 秒执行过期会话和历史记录清理，最小允许值为 60 秒。
 - 服务关闭时会取消维护任务、停止流水线线程池并关闭元数据连接。
 
 ## 认证与命令安全
 
 - 认证中间件解析出的身份缓存到请求状态，路由依赖直接复用；会话认证从每请求两次数据库查询降为一次。
 - 首次启动未配置管理员口令时生成随机口令并仅写入启动日志，不再使用固定默认弱口令。
-- 登录失败按“用户名 + 客户端 IP”限流；默认连续失败 5 次后锁定 300 秒，可通过 `VMLAB_LOGIN_MAX_FAILURES` 和 `VMLAB_LOGIN_LOCKOUT_SECONDS` 调整。
-- 外部命令使用最小环境变量集合，默认剥离 `VMLAB_METADATA_DB`、`VMLAB_ADMIN_PASSWORD`、认证令牌和对象存储凭证。
-- `VMLAB_EXTERNAL_COMMAND_ENV_PASSTHROUGH` 可用逗号分隔变量名，显式放行训练脚本确实需要的额外环境变量。
+- 登录失败按“用户名 + 客户端 IP”限流；默认连续失败 5 次后锁定 300 秒，可通过 `SCENARA_MODEL_LOGIN_MAX_FAILURES` 和 `SCENARA_MODEL_LOGIN_LOCKOUT_SECONDS` 调整。
+- 外部命令使用最小环境变量集合，默认剥离 `SCENARA_MODEL_METADATA_DB`、`SCENARA_MODEL_ADMIN_PASSWORD`、认证令牌和对象存储凭证。
+- `SCENARA_MODEL_EXTERNAL_COMMAND_ENV_PASSTHROUGH` 可用逗号分隔变量名，显式放行训练脚本确实需要的额外环境变量。
 
 ## 版本与工程门禁
 
@@ -52,8 +52,8 @@
 
 - Dockerfile 将第三方依赖和源码安装拆层；源码变化不再触发 ONNX/FastAPI 等依赖全量重装。
 - 占位包安装结束后删除 `src` 与 `build`，避免 setuptools 复用旧 build 目录使运行时版本残留为 `0.0.0`。
-- 容器冒烟会断言 `vision_model_lab.__version__` 与安装包元数据一致。
-- `VMLAB_EXTRAS=postgres,s3` 可在镜像中安装 PostgreSQL 与 S3/MinIO 驱动。
+- 容器冒烟会断言 `scenara_model.__version__` 与安装包元数据一致。
+- `SCENARA_MODEL_EXTRAS=postgres,s3` 可在镜像中安装 PostgreSQL 与 S3/MinIO 驱动。
 - `docker-compose.postgres.yml` 提供 PostgreSQL + MinIO 叠加配置，并等待两个依赖服务健康后启动应用。
 
 生产组合启动命令：
@@ -77,7 +77,7 @@ docker compose `
 2. 备份元数据数据库后执行迁移：
 
    ```powershell
-   vmlab storage migrate
+   scenara-model storage migrate
    # 或在安装 migrations extra 的环境中执行：
    python -m alembic upgrade head
    ```
@@ -85,9 +85,9 @@ docker compose `
 3. 生产环境显式设置管理员口令和保留策略：
 
    ```powershell
-   $env:VMLAB_ADMIN_PASSWORD="<strong-password>"
-   $env:VMLAB_LOG_RETENTION_DAYS="30"
-   $env:VMLAB_MAINTENANCE_INTERVAL_SECONDS="3600"
+   $env:SCENARA_MODEL_ADMIN_PASSWORD="<strong-password>"
+   $env:SCENARA_MODEL_LOG_RETENTION_DAYS="30"
+   $env:SCENARA_MODEL_MAINTENANCE_INTERVAL_SECONDS="3600"
    ```
 
 4. 重新构建前端和镜像，确认 `/health` 的版本与 journal mode：

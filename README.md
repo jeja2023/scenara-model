@@ -1,8 +1,10 @@
-# Vision Model Lab
+# Scenara Model
 
-当前版本：`0.8.0`。完整变更见 [CHANGELOG.md](CHANGELOG.md)，发布说明见 [docs/RELEASE_0.8.0.md](docs/RELEASE_0.8.0.md)。
+当前版本：`1.0.0-dev.0`。完整变更见 [CHANGELOG.md](CHANGELOG.md)，迁移说明见 [docs/RELEASE_1.0.0-dev.0.md](docs/RELEASE_1.0.0-dev.0.md)。
 
-`vision-model-lab` 是独立于 `gpu-services` 的视觉模型研发与交付仓库。它负责数据版本、标注规范、实验记录、评估、ONNX 导出和标准模型包交付；推理服务只消费 ONNX、模型卡、labels、样例和 `models.yml` 建议片段。
+`scenara-model` 是景枢模型平台的责任仓库，负责实验、训练任务、模型评估、模型版本、模型注册和不可变 Model Package 发布。训练数据只引用 `scenara-data` 发布的不可变 Dataset Version；生产准入、激活、流量切换和回滚由 `scenara` 负责。
+
+当前成熟度为 `seed`。仓库由 `vision-model-lab` 迁移而来，已有训练与制品能力可以继续验证，但共享 IAM、统一 Console 和正式跨仓库契约接入尚未完成，因此不得标记为 `production_ready`。责任团队为 Scenara Model，迁移门禁和临时例外见 [ADR-0001](docs/adr/0001-repository-rename-and-control-plane-transition.md)。
 
 ## 当前能力
 
@@ -10,11 +12,11 @@
 - 模型命名、模型卡、labels、样例、sha256 校验。
 - JSONL 数据 manifest 校验。
 - FastAPI 管理接口。
-- React/TypeScript 管理台源码，包含流水线、任务详情、模型包、实验、数据与契约入口。
+- 迁移期 React/TypeScript 管理台源码，默认禁用并冻结新增业务；正式入口必须接入 `scenara` 统一 Console。
 - YOLO 检测、ReID、分类、分割的本地基线适配器；配置 `training.command`、`export.command`、`evaluation.command` 后会执行真实外部框架命令并记录日志。baseline 仅用于 smoke，生产包默认要求真实 checkpoint、ONNX、实测指标、样例和阈值。
-- 实验记录、流水线运行、任务日志、产物索引、模型包校验、数据集版本、模型注册、发布审批、灰度/回滚和审计事件的元数据存储。
+- 实验记录、流水线运行、任务日志、产物索引、模型包校验、Dataset Version 引用、模型注册和模型制品发布的元数据存储。
 - local/S3/MinIO 对象存储入口、上传接口和误差样本摘要。
-- 用户名密码登录与会话令牌鉴权：除 `/api/auth/login` 与 `/health` 外，全部 `/api` 接口要求认证；`VMLAB_AUTH_TOKEN` 静态令牌并行支持 CI 与脚本调用。
+- 迁移期本地鉴权与静态令牌兼容实现；正式部署前必须替换为 Core 信任的短期服务凭据和统一权限 ID。
 
 ## 一键启动
 
@@ -24,20 +26,21 @@
 python start.py
 ```
 
-脚本会读取 `.env`（首次启动自动从 `.env.example` 复制），创建或复用 `.venv`，安装 Python 依赖，安装并构建前端，初始化元数据存储，然后启动 API 和管理台。`start.py` 仅负责校验 Python 版本并调用 `scripts/start_lab.py`，根目录不再保留其他启动入口。
+脚本会读取 `.env`（首次启动自动从 `.env.example` 复制），创建或复用 `.venv`，安装 Python 依赖，初始化元数据存储并启动领域 API。独立前端默认不构建、不启用；`start.py` 仅负责校验 Python 版本并调用 `scripts/start_model.py`。
 
 常用参数：
 
 ```powershell
 python start.py --port 8080
-python start.py --skip-install --skip-frontend-build
+python start.py --skip-install
+python start.py --with-legacy-frontend
 ```
 
 启动后访问：
 
-- 管理台：`http://127.0.0.1:8080/`
 - 接口文档：`http://127.0.0.1:8080/docs`
 - 健康检查：`http://127.0.0.1:8080/health`
+- 统一 Console：由 `scenara` 提供；仅使用 `--with-legacy-frontend` 时暴露迁移期页面。
 
 ## 快速命令
 
@@ -60,7 +63,7 @@ python scripts/runtime_check.py --base-url http://127.0.0.1:8080
 
 ```powershell
 pip install -e .[dev]
-vmlab --help
+scenara-model --help
 ```
 
 ## 标准模型包
@@ -114,7 +117,7 @@ defect_classifier_resnet50_v2.0.0_fp16.onnx
 
 - API 静态文件回退和模型包 `model_id` 已增加路径边界校验，防止读取工作区或包目录外文件。
 - 流水线支持异步 job：`POST /api/pipelines/run` 可传 `{"async": true}`，并通过 `/api/pipelines/jobs` 查询、取消或重试。
-- 外部训练命令默认禁用 shell 字符串，只允许 argv list；可通过 `VMLAB_ALLOW_SHELL_COMMANDS` 显式兼容旧配置。
+- 外部训练命令默认禁用 shell 字符串，只允许 argv list；可通过 `SCENARA_MODEL_ALLOW_SHELL_COMMANDS` 显式兼容旧配置。
 - 本地对象存储、上传大小、pipeline worker 数、外部命令超时和日志长度均可通过环境变量配置。
 - SQLite 元数据存储使用 journal mode 逐级回退、busy timeout 和线程锁；多实例生产部署仍建议迁移 PostgreSQL。
 ## 0.3.0 环境与发布说明
@@ -128,14 +131,14 @@ defect_classifier_resnet50_v2.0.0_fp16.onnx
 
 - 流水线 job 会记录阶段日志和产物索引，前端“运行详情”可查看日志、错误和产物链接。
 - 新增数据集版本、模型注册、发布审批和灰度/回滚 API，支撑长期 MLOps 流程。
-- `VMLAB_STORAGE_BACKEND` 支持 `local`、`s3`、`minio`；S3/MinIO 需要安装 `vision-model-lab[s3]`。
-- `VMLAB_METADATA_DB` 支持 SQLite 路径和 PostgreSQL DSN；PostgreSQL 需要安装 `vision-model-lab[postgres]`。
-- 新增 Alembic 迁移目录；轻量环境可执行 `vmlab storage migrate`，正式环境可执行 `alembic upgrade head`。
+- `SCENARA_MODEL_STORAGE_BACKEND` 支持 `local`、`s3`、`minio`；S3/MinIO 需要安装 `scenara-model[s3]`。
+- `SCENARA_MODEL_METADATA_DB` 支持 SQLite 路径和 PostgreSQL DSN；PostgreSQL 需要安装 `scenara-model[postgres]`。
+- 新增 Alembic 迁移目录；轻量环境可执行 `scenara-model storage migrate`，正式环境可执行 `alembic upgrade head`。
 - 新增生产框架 adapter 入口，部署侧配置 argv 命令后可接入 Ultralytics、TorchReID、TorchVision 或分割框架。
 
 ## 0.4.1 取消闭环与稳定性补丁
 
 - 流水线 job 支持从 `cancellation_requested` 到 `cancelled` 的完整取消闭环，会记录取消时间、取消阶段、取消原因和已生成产物。
 - 管理台已补齐 `queued`、`cancelled`、`cancellation_requested` 中文状态，job 详情可直接查看取消反馈。
-- Alembic baseline 迁移已补齐核心表结构，`VMLAB_METADATA_DB` 支持普通 SQLite 文件路径。
+- Alembic baseline 迁移已补齐核心表结构，`SCENARA_MODEL_METADATA_DB` 支持普通 SQLite 文件路径。
 - 模型包扫描会在超过上限后提前停止，避免大目录一次性排序扫描。

@@ -57,31 +57,31 @@ class Settings:
 
 
 def load_settings() -> Settings:
-    workspace_root = Path(os.environ.get("VMLAB_WORKSPACE", Path.cwd())).resolve()
+    workspace_root = Path(os.environ.get("SCENARA_MODEL_WORKSPACE", Path.cwd())).resolve()
     # 默认使用持久化 SQLite 文件：':memory:' 会在服务重启时静默清空全部元数据，
     # 仅当显式配置时才使用（/health 会标记 metadata_persistent=false）。
-    metadata_db = os.environ.get("VMLAB_METADATA_DB", "artifacts/vision_model_lab.sqlite3")
+    metadata_db = os.environ.get("SCENARA_MODEL_METADATA_DB", "artifacts/scenara_model.sqlite3")
     if metadata_db != ":memory:" and not metadata_db.startswith(("postgresql://", "postgres://")) and not Path(metadata_db).is_absolute():
         metadata_db = str(workspace_root / metadata_db)
     return Settings(
         workspace_root=workspace_root,
         metadata_db=metadata_db,
-        cors_origins=_list_env("VMLAB_CORS_ORIGINS", ["*"]),
-        serve_frontend=_bool_env("VMLAB_SERVE_FRONTEND", True),
-        frontend_dist=workspace_root / os.environ.get("VMLAB_FRONTEND_DIST", "frontend/dist"),
-        max_package_scan_files=_int_env("VMLAB_MAX_PACKAGE_SCAN_FILES", 500),
-        max_upload_bytes=_int_env("VMLAB_MAX_UPLOAD_BYTES", 500 * 1024 * 1024),
-        storage_backend=os.environ.get("VMLAB_STORAGE_BACKEND", "local"),
-        storage_uri=os.environ.get("VMLAB_STORAGE_URI", str(workspace_root / "artifacts" / "object-store")),
-        auth_token=os.environ.get("VMLAB_AUTH_TOKEN"),
-        admin_password=os.environ.get("VMLAB_ADMIN_PASSWORD"),
-        session_ttl_hours=_int_env("VMLAB_SESSION_TTL_HOURS", 24),
-        login_max_failures=_int_env("VMLAB_LOGIN_MAX_FAILURES", 5),
-        login_lockout_seconds=_int_env("VMLAB_LOGIN_LOCKOUT_SECONDS", 300),
-        log_retention_days=_int_env("VMLAB_LOG_RETENTION_DAYS", 30, minimum=0),
-        maintenance_interval_seconds=_int_env("VMLAB_MAINTENANCE_INTERVAL_SECONDS", 3600, minimum=60),
-        pipeline_workers=_int_env("VMLAB_PIPELINE_WORKERS", 2),
-        external_command_timeout_seconds=_int_env("VMLAB_EXTERNAL_COMMAND_TIMEOUT_SECONDS", 3600),
-        external_command_log_max_chars=_int_env("VMLAB_EXTERNAL_COMMAND_LOG_MAX_CHARS", 20000),
-        allow_shell_commands=_bool_env("VMLAB_ALLOW_SHELL_COMMANDS", False),
+        cors_origins=_list_env("SCENARA_MODEL_CORS_ORIGINS", ["*"]),
+        serve_frontend=_bool_env("SCENARA_MODEL_SERVE_FRONTEND", True),
+        frontend_dist=workspace_root / os.environ.get("SCENARA_MODEL_FRONTEND_DIST", "frontend/dist"),
+        max_package_scan_files=_int_env("SCENARA_MODEL_MAX_PACKAGE_SCAN_FILES", 500),
+        max_upload_bytes=_int_env("SCENARA_MODEL_MAX_UPLOAD_BYTES", 500 * 1024 * 1024),
+        storage_backend=os.environ.get("SCENARA_MODEL_STORAGE_BACKEND", "local"),
+        storage_uri=os.environ.get("SCENARA_MODEL_STORAGE_URI", str(workspace_root / "artifacts" / "object-store")),
+        auth_token=os.environ.get("SCENARA_MODEL_AUTH_TOKEN"),
+        admin_password=os.environ.get("SCENARA_MODEL_ADMIN_PASSWORD"),
+        session_ttl_hours=_int_env("SCENARA_MODEL_SESSION_TTL_HOURS", 24),
+        login_max_failures=_int_env("SCENARA_MODEL_LOGIN_MAX_FAILURES", 5),
+        login_lockout_seconds=_int_env("SCENARA_MODEL_LOGIN_LOCKOUT_SECONDS", 300),
+        log_retention_days=_int_env("SCENARA_MODEL_LOG_RETENTION_DAYS", 30, minimum=0),
+        maintenance_interval_seconds=_int_env("SCENARA_MODEL_MAINTENANCE_INTERVAL_SECONDS", 3600, minimum=60),
+        pipeline_workers=_int_env("SCENARA_MODEL_PIPELINE_WORKERS", 2),
+        external_command_timeout_seconds=_int_env("SCENARA_MODEL_EXTERNAL_COMMAND_TIMEOUT_SECONDS", 3600),
+        external_command_log_max_chars=_int_env("SCENARA_MODEL_EXTERNAL_COMMAND_LOG_MAX_CHARS", 20000),
+        allow_shell_commands=_bool_env("SCENARA_MODEL_ALLOW_SHELL_COMMANDS", False),
     )

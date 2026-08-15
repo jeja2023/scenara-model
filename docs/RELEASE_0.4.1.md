@@ -1,4 +1,4 @@
-# Vision Model Lab 0.4.1 发布说明
+# Scenara Model 0.4.1 发布说明
 
 发布日期：2026-07-13
 
@@ -13,8 +13,8 @@
 - 同步流水线运行也会在失败或取消时记录更准确的审计动作，便于追踪实际结果。
 - 管理台补齐 `queued`、`cancelled`、`cancellation_requested` 中文状态，job 详情展示取消提示、取消时间、取消阶段和取消原因。
 - 状态徽章新增进行中和中性样式，让“取消中”和“已取消”不再被误显示为普通失败。
-- 模型包扫描改为增量收集 ONNX 文件，超过 `VMLAB_MAX_PACKAGE_SCAN_FILES` 后提前停止，避免大目录一次性排序扫描。
-- Alembic baseline 迁移补齐核心元数据表，并支持 `VMLAB_METADATA_DB` 使用普通 SQLite 文件路径。
+- 模型包扫描改为增量收集 ONNX 文件，超过 `SCENARA_MODEL_MAX_PACKAGE_SCAN_FILES` 后提前停止，避免大目录一次性排序扫描。
+- Alembic baseline 迁移补齐核心元数据表，并支持 `SCENARA_MODEL_METADATA_DB` 使用普通 SQLite 文件路径。
 
 ## 兼容性
 

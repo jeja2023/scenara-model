@@ -31,7 +31,7 @@ jobs:
       - name: Audit Python dependencies
         run: |
           python -m pip install pip-audit
-          python -m pip uninstall -y vision-model-lab
+          python -m pip uninstall -y scenara-model
           pip-audit --desc --strict
 
   typecheck:
@@ -77,15 +77,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Build image
-        run: docker build -t vision-model-lab:ci .
+        run: docker build -t scenara-model:ci .
       - name: Smoke test image
         run: |
-          docker run --rm vision-model-lab:ci python -c "from importlib.metadata import version; from vision_model_lab import __version__; from vision_model_lab.api import app; assert __version__ == version('vision-model-lab'); print(app.title, __version__)"
-          docker run -d --name vmlab-ci -p 8080:8080 vision-model-lab:ci
+          docker run --rm scenara-model:ci python -c "from importlib.metadata import version; from scenara_model import __version__; from scenara_model.api import app; assert __version__ == version('scenara-model'); print(app.title, __version__)"
+          docker run -d --name scenara-model-ci -p 8080:8080 scenara-model:ci
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then break; fi
             sleep 2
           done
           curl -fsS http://127.0.0.1:8080/health | grep -q '"status":"ok"'
-          docker logs vmlab-ci
-          docker rm -f vmlab-ci
+          docker logs scenara-model-ci
+          docker rm -f scenara-model-ci

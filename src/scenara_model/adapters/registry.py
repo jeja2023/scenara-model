@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from vision_model_lab.adapters.base import AdapterResult, LogLineSink, TaskAdapter
-from vision_model_lab.adapters.local_tasks import (
+from scenara_model.adapters.base import AdapterResult, LogLineSink, TaskAdapter
+from scenara_model.adapters.local_tasks import (
     CLASSIFICATION_BASELINE,
     DETECTION_YOLO_BASELINE,
     REID_BASELINE,
@@ -14,8 +14,8 @@ from vision_model_lab.adapters.local_tasks import (
     TORCHVISION_CLASSIFICATION_ADAPTER,
     ULTRALYTICS_YOLO_ADAPTER,
 )
-from vision_model_lab.adapters.reference_identity import REFERENCE_IDENTITY_ADAPTER
-from vision_model_lab.utils import read_yaml
+from scenara_model.adapters.reference_identity import REFERENCE_IDENTITY_ADAPTER
+from scenara_model.utils import read_yaml
 
 ADAPTERS: dict[str, TaskAdapter] = {
     REFERENCE_IDENTITY_ADAPTER.name: REFERENCE_IDENTITY_ADAPTER,

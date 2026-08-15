@@ -6,9 +6,9 @@ from dataclasses import replace
 import pytest
 from fastapi.testclient import TestClient
 
-import vision_model_lab.api as api
-from vision_model_lab.auth import hash_password, token_digest, verify_password
-from vision_model_lab.storage import MetadataStore
+import scenara_model.api as api
+from scenara_model.auth import hash_password, token_digest, verify_password
+from scenara_model.storage import MetadataStore
 
 TEST_ADMIN_PASSWORD = "test-admin-password"
 
@@ -169,7 +169,7 @@ def test_login_is_throttled_after_repeated_failures() -> None:
 
 
 def test_bootstrap_generates_password_when_not_configured(monkeypatch: pytest.MonkeyPatch) -> None:
-    """回归：未配置 VMLAB_ADMIN_PASSWORD 时不得回落到固定弱口令。"""
+    """回归：未配置 SCENARA_MODEL_ADMIN_PASSWORD 时不得回落到固定弱口令。"""
     monkeypatch.setattr(api, "SETTINGS", replace(api.SETTINGS, admin_password=None))
 
     generated = api._bootstrap_admin_user()

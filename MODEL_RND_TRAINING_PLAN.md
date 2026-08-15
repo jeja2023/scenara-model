@@ -45,7 +45,7 @@
 建议单独建立算法研发仓库，例如：
 
 ```text
-vision-model-lab/
+scenara-model/
   README.md
   configs/
     datasets/

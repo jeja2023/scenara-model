@@ -18,17 +18,16 @@ class ChineseArgumentParser(argparse.ArgumentParser):
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = ChineseArgumentParser(description="本地启动视觉模型实验室。", add_help=False)
+    parser = ChineseArgumentParser(description="本地启动景枢模型平台。", add_help=False)
     parser.add_argument("-h", "--help", action="help", help="显示帮助信息并退出。")
     parser.add_argument("--host", "--hostname", "-HostName", dest="host", default="127.0.0.1", help="监听地址。")
     parser.add_argument("--port", "-Port", dest="port", type=int, default=8080, help="监听端口。")
     parser.add_argument("--skip-install", "-SkipInstall", dest="skip_install", action="store_true", help="跳过 Python 依赖安装。")
     parser.add_argument(
-        "--skip-frontend-build",
-        "-SkipFrontendBuild",
-        dest="skip_frontend_build",
+        "--with-legacy-frontend",
+        dest="with_legacy_frontend",
         action="store_true",
-        help="跳过前端依赖安装与构建。",
+        help="构建并启用迁移期独立前端；常规开发应通过 scenara 统一 Console 接入。",
     )
     return parser.parse_args(argv)
 
@@ -105,8 +104,8 @@ def ensure_virtualenv(root: Path) -> Path:
     return python_path
 
 
-def ensure_frontend(root: Path, skip_build: bool) -> None:
-    if skip_build:
+def ensure_frontend(root: Path, enabled: bool) -> None:
+    if not enabled:
         return
 
     npm = shutil.which("npm.cmd") or shutil.which("npm")
@@ -131,9 +130,9 @@ def configure_environment(root: Path) -> None:
     ensure_env_file(root)
     load_dotenv(root / ".env")
 
-    if not os.environ.get("VMLAB_WORKSPACE") or os.environ["VMLAB_WORKSPACE"] == ".":
-        os.environ["VMLAB_WORKSPACE"] = str(root)
-    os.environ.setdefault("VMLAB_METADATA_DB", "artifacts/vision_model_lab.sqlite3")
+    if not os.environ.get("SCENARA_MODEL_WORKSPACE") or os.environ["SCENARA_MODEL_WORKSPACE"] == ".":
+        os.environ["SCENARA_MODEL_WORKSPACE"] = str(root)
+    os.environ.setdefault("SCENARA_MODEL_METADATA_DB", "artifacts/scenara_model.sqlite3")
 
     (root / "artifacts").mkdir(parents=True, exist_ok=True)
     (root / "artifacts" / "object-store").mkdir(parents=True, exist_ok=True)
@@ -141,7 +140,7 @@ def configure_environment(root: Path) -> None:
 
 def start_api(root: Path, python_path: Path, host: str, port: int) -> int:
     print("", flush=True)
-    print("视觉模型实验室正在启动...", flush=True)
+    print("景枢模型平台正在启动...", flush=True)
     print(f"管理台：    http://{host}:{port}/", flush=True)
     print(f"接口文档：  http://{host}:{port}/docs", flush=True)
     print(f"健康检查：  http://{host}:{port}/health", flush=True)
@@ -155,7 +154,7 @@ def start_api(root: Path, python_path: Path, host: str, port: int) -> int:
         "--port",
         str(port),
         "--metadata-db",
-        os.environ["VMLAB_METADATA_DB"],
+        os.environ["SCENARA_MODEL_METADATA_DB"],
     ]
     try:
         return subprocess.call(command, cwd=str(root))
@@ -175,18 +174,20 @@ def main(argv: list[str] | None = None) -> int:
         print("[准备] 正在安装 Python 依赖（详细日志已隐藏，失败时才显示）...", flush=True)
         run([python_path, "-m", "pip", "install", "-q", "-e", ".[dev]"], cwd=root, quiet=True)
 
-    ensure_frontend(root, args.skip_frontend_build)
+    if args.with_legacy_frontend:
+        os.environ["SCENARA_MODEL_SERVE_FRONTEND"] = "true"
+    ensure_frontend(root, args.with_legacy_frontend)
 
     print("[准备] 正在初始化元数据存储...", flush=True)
     run(
         [
             python_path,
             "-m",
-            "vision_model_lab.cli",
+            "scenara_model.cli",
             "storage",
             "migrate",
             "--uri",
-            os.environ["VMLAB_METADATA_DB"],
+            os.environ["SCENARA_MODEL_METADATA_DB"],
         ],
         cwd=root,
     )

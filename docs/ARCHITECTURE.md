@@ -1,4 +1,4 @@
-﻿# 架构设计
+# 架构设计
 
 ## 分层
 
@@ -73,7 +73,7 @@ Storage
 
 ## 外部命令适配器契约
 
-`training` / `export` / `evaluation` 三个阶段均支持 `command`（argv 列表；字符串 shell 命令默认禁用，需 `VMLAB_ALLOW_SHELL_COMMANDS=true`）与 `command_cwd`（限定在工作区内）。关键产物契约：
+`training` / `export` / `evaluation` 三个阶段均支持 `command`（argv 列表；字符串 shell 命令默认禁用，需 `SCENARA_MODEL_ALLOW_SHELL_COMMANDS=true`）与 `command_cwd`（限定在工作区内）。关键产物契约：
 
 - `export.produced_onnx`：外部导出命令产出的 ONNX 路径（经工作区边界校验）。命令成功后平台将其复制到目标产物路径并立即执行加载校验；**外部导出结果绝不会被合成基线模型覆盖**，报告中的 `onnx_source` 字段标识来源（`external_command` / `synthetic_baseline` / `reused`）。
 - `export.reuse_existing: true`：显式声明才复用已存在的可加载 ONNX；默认每次导出都重新生成，避免改配置重跑后静默交付旧模型。

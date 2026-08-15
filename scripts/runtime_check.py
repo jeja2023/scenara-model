@@ -37,7 +37,7 @@ def main() -> int:
     )
 
     home_status, home_body = fetch(f"{base_url}/")
-    has_brand = "视觉模型研发平台" in home_body or "Vision Model Lab" in home_body
+    has_brand = "视觉模型研发平台" in home_body or "Scenara Model" in home_body
     has_frontend_asset = "/assets/" in home_body or "模型交付控制台" in home_body or "Delivery Console" in home_body
     checks.append(
         {

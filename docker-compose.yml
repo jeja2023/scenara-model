@@ -1,9 +1,9 @@
 services:
-  vision-model-lab:
+  scenara-model:
     build:
       context: .
       args:
-        VMLAB_EXTRAS: postgres,s3
+        SCENARA_MODEL_EXTRAS: postgres,s3
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -12,21 +12,21 @@ services:
       - path: .env
         required: false
     environment:
-      VMLAB_WORKSPACE: /app
-      VMLAB_METADATA_DB: ${VMLAB_METADATA_DB:-artifacts/vision_model_lab.sqlite3}
-      VMLAB_CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173
-      VMLAB_SERVE_FRONTEND: "true"
-      VMLAB_STORAGE_BACKEND: ${VMLAB_STORAGE_BACKEND:-local}
-      VMLAB_STORAGE_URI: ${VMLAB_STORAGE_URI:-artifacts/object-store}
-      VMLAB_MAX_PACKAGE_SCAN_FILES: "500"
-      VMLAB_MAX_UPLOAD_BYTES: "524288000"
-      VMLAB_PIPELINE_WORKERS: "2"
-      VMLAB_EXTERNAL_COMMAND_TIMEOUT_SECONDS: "3600"
-      VMLAB_EXTERNAL_COMMAND_LOG_MAX_CHARS: "20000"
-      VMLAB_ALLOW_SHELL_COMMANDS: "false"
-      # 生产环境必须设置 VMLAB_AUTH_TOKEN（写接口鉴权），建议通过 .env 注入。
+      SCENARA_MODEL_WORKSPACE: /app
+      SCENARA_MODEL_METADATA_DB: ${SCENARA_MODEL_METADATA_DB:-artifacts/scenara_model.sqlite3}
+      SCENARA_MODEL_CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173
+      SCENARA_MODEL_SERVE_FRONTEND: "false"
+      SCENARA_MODEL_STORAGE_BACKEND: ${SCENARA_MODEL_STORAGE_BACKEND:-local}
+      SCENARA_MODEL_STORAGE_URI: ${SCENARA_MODEL_STORAGE_URI:-artifacts/object-store}
+      SCENARA_MODEL_MAX_PACKAGE_SCAN_FILES: "500"
+      SCENARA_MODEL_MAX_UPLOAD_BYTES: "524288000"
+      SCENARA_MODEL_PIPELINE_WORKERS: "2"
+      SCENARA_MODEL_EXTERNAL_COMMAND_TIMEOUT_SECONDS: "3600"
+      SCENARA_MODEL_EXTERNAL_COMMAND_LOG_MAX_CHARS: "20000"
+      SCENARA_MODEL_ALLOW_SHELL_COMMANDS: "false"
+      # 生产环境必须设置 SCENARA_MODEL_AUTH_TOKEN（写接口鉴权），建议通过 .env 注入。
       # 未设置时首次启动会生成随机口令并打印到容器日志（docker compose logs）。
-      VMLAB_ADMIN_PASSWORD: ${VMLAB_ADMIN_PASSWORD:-}
+      SCENARA_MODEL_ADMIN_PASSWORD: ${SCENARA_MODEL_ADMIN_PASSWORD:-}
     volumes:
       - ./artifacts:/app/artifacts
       - ./shared-models:/app/shared-models
@@ -44,13 +44,13 @@ services:
     profiles: ["postgres"]
     restart: unless-stopped
     environment:
-      POSTGRES_DB: vmlab
-      POSTGRES_USER: vmlab
-      POSTGRES_PASSWORD: ${VMLAB_POSTGRES_PASSWORD:-vmlab-dev-only}
+      POSTGRES_DB: scenara_model
+      POSTGRES_USER: scenara_model
+      POSTGRES_PASSWORD: ${SCENARA_MODEL_POSTGRES_PASSWORD:-scenara-model-dev-only}
     volumes:
-      - vmlab-postgres:/var/lib/postgresql/data
+      - scenara-model-postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vmlab -d vmlab"]
+      test: ["CMD-SHELL", "pg_isready -U scenara_model -d scenara_model"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -62,13 +62,13 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${VMLAB_MINIO_ROOT_USER:-vmlab}
-      MINIO_ROOT_PASSWORD: ${VMLAB_MINIO_ROOT_PASSWORD:-vmlab-dev-only}
+      MINIO_ROOT_USER: ${SCENARA_MODEL_MINIO_ROOT_USER:-scenara-model}
+      MINIO_ROOT_PASSWORD: ${SCENARA_MODEL_MINIO_ROOT_PASSWORD:-scenara-model-dev-only}
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - vmlab-minio:/data
+      - scenara-model-minio:/data
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -76,5 +76,5 @@ services:
       retries: 5
 
 volumes:
-  vmlab-postgres:
-  vmlab-minio:
+  scenara-model-postgres:
+  scenara-model-minio:

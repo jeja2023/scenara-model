@@ -6,12 +6,12 @@ import os
 import sys
 from pathlib import Path
 
-from vision_model_lab.contracts import validate_models_fragment, validate_release_decision
-from vision_model_lab.datasets.manifest import validate_manifest
-from vision_model_lab.packaging.model_package import create_model_package, validate_model_package
-from vision_model_lab.settings import load_settings
-from vision_model_lab.storage import metadata_store_from_uri
-from vision_model_lab.utils import sha256_file
+from scenara_model.contracts import validate_models_fragment, validate_release_decision
+from scenara_model.datasets.manifest import validate_manifest
+from scenara_model.packaging.model_package import create_model_package, validate_model_package
+from scenara_model.settings import load_settings
+from scenara_model.storage import metadata_store_from_uri
+from scenara_model.utils import sha256_file
 
 
 def _print_json(data: object) -> None:
@@ -131,7 +131,7 @@ def _sqlite_path_from_uri(uri: str) -> Path | None:
         return None
     path = Path(uri)
     if not path.is_absolute():
-        workspace = Path(os.environ.get("VMLAB_WORKSPACE", Path.cwd())).resolve()
+        workspace = Path(os.environ.get("SCENARA_MODEL_WORKSPACE", Path.cwd())).resolve()
         path = workspace / path
     return path
 
@@ -173,7 +173,7 @@ def _cmd_storage_migrate(args: argparse.Namespace) -> int:
             root = Path(__file__).resolve().parents[2]
             ini_path = root / "alembic.ini"
             if ini_path.exists():
-                os.environ["VMLAB_METADATA_DB"] = uri
+                os.environ["SCENARA_MODEL_METADATA_DB"] = uri
                 config = alembic.config.Config(str(ini_path))
                 config.set_main_option("script_location", str(root / "migrations"))
                 if _needs_alembic_stamp(uri):
@@ -194,12 +194,12 @@ def _cmd_storage_migrate(args: argparse.Namespace) -> int:
 def _cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
-    uvicorn.run("vision_model_lab.api:app", host=args.host, port=args.port, reload=args.reload)
+    uvicorn.run("scenara_model.api:app", host=args.host, port=args.port, reload=args.reload)
     return 0
 
 
 def _cmd_user_set_password(args: argparse.Namespace) -> int:
-    from vision_model_lab.auth import hash_password
+    from scenara_model.auth import hash_password
 
     settings = load_settings()
     store = metadata_store_from_uri(args.uri or settings.metadata_db)
@@ -225,7 +225,7 @@ def _cmd_user_set_password(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="vmlab", description="Vision model lab delivery tooling")
+    parser = argparse.ArgumentParser(prog="scenara-model", description="Scenara Model delivery tooling")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     hash_parser = subparsers.add_parser("hash", help="Calculate a file sha256 digest")
@@ -279,7 +279,7 @@ def build_parser() -> argparse.ArgumentParser:
     storage_parser = subparsers.add_parser("storage", help="Metadata storage operations")
     storage_subparsers = storage_parser.add_subparsers(dest="storage_command", required=True)
     storage_migrate_parser = storage_subparsers.add_parser("migrate", help="Initialize or upgrade metadata storage")
-    storage_migrate_parser.add_argument("--uri", help="Override VMLAB_METADATA_DB")
+    storage_migrate_parser.add_argument("--uri", help="Override SCENARA_MODEL_METADATA_DB")
     storage_migrate_parser.set_defaults(func=_cmd_storage_migrate)
 
     serve_parser = subparsers.add_parser("serve", help="Run the management API")
@@ -295,7 +295,7 @@ def build_parser() -> argparse.ArgumentParser:
     set_password_parser.add_argument("--password", required=True)
     set_password_parser.add_argument("--create", action="store_true", help="Create the user if it does not exist")
     set_password_parser.add_argument("--role", default="admin")
-    set_password_parser.add_argument("--uri", help="Override VMLAB_METADATA_DB")
+    set_password_parser.add_argument("--uri", help="Override SCENARA_MODEL_METADATA_DB")
     set_password_parser.set_defaults(func=_cmd_user_set_password)
 
     return parser

@@ -5,15 +5,15 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from vision_model_lab.adapters.base import AdapterResult, LogLineSink
-from vision_model_lab.export.onnx_checks import check_onnx_loadable
-from vision_model_lab.utils import ensure_dir, read_yaml, write_json
+from scenara_model.adapters.base import AdapterResult, LogLineSink
+from scenara_model.export.onnx_checks import check_onnx_loadable
+from scenara_model.utils import ensure_dir, read_yaml, write_json
 
 
 def _experiment_dir(config: dict[str, Any], root: str | Path = "experiments/local_runs") -> Path:
     experiment = config.get("experiment", {})
     experiment_id = experiment.get("id", "reference_identity")
-    workspace = Path(os.environ.get("VMLAB_WORKSPACE", Path.cwd())).resolve()
+    workspace = Path(os.environ.get("SCENARA_MODEL_WORKSPACE", Path.cwd())).resolve()
     return ensure_dir(workspace / root / str(experiment_id))
 
 
@@ -63,7 +63,7 @@ def export_onnx(config_path: str | Path) -> Path:
     )
     model = helper.make_model(
         graph,
-        producer_name="vision-model-lab-reference",
+        producer_name="scenara-model-reference",
         opset_imports=[helper.make_operatorsetid("", 17)],
     )
     model.ir_version = 8

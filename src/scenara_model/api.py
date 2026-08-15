@@ -21,25 +21,25 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from vision_model_lab import __version__
-from vision_model_lab.adapters.registry import list_adapters
-from vision_model_lab.auth import generate_session_token, hash_password, token_digest, verify_password
-from vision_model_lab.contracts import validate_models_fragment, validate_release_decision
-from vision_model_lab.datasets.manifest import validate_manifest
-from vision_model_lab.naming import parse_artifact_name
-from vision_model_lab.object_store import object_store_from_settings
-from vision_model_lab.packaging.model_package import validate_model_package
-from vision_model_lab.pipeline import collect_pipeline_artifacts, create_package_from_experiment, load_error_cases, run_experiment_pipeline
-from vision_model_lab.settings import load_settings
-from vision_model_lab.storage import metadata_store_from_uri
-from vision_model_lab.utils import read_yaml
+from scenara_model import __version__
+from scenara_model.adapters.registry import list_adapters
+from scenara_model.auth import generate_session_token, hash_password, token_digest, verify_password
+from scenara_model.contracts import validate_models_fragment, validate_release_decision
+from scenara_model.datasets.manifest import validate_manifest
+from scenara_model.naming import parse_artifact_name
+from scenara_model.object_store import object_store_from_settings
+from scenara_model.packaging.model_package import validate_model_package
+from scenara_model.pipeline import collect_pipeline_artifacts, create_package_from_experiment, load_error_cases, run_experiment_pipeline
+from scenara_model.settings import load_settings
+from scenara_model.storage import metadata_store_from_uri
+from scenara_model.utils import read_yaml
 
-logger = logging.getLogger("vision_model_lab.api")
+logger = logging.getLogger("scenara_model.api")
 
 SETTINGS = load_settings()
 WORKSPACE_ROOT = SETTINGS.workspace_root
 STORE = metadata_store_from_uri(SETTINGS.metadata_db)
-EXECUTOR = ThreadPoolExecutor(max_workers=SETTINGS.pipeline_workers, thread_name_prefix="vmlab-pipeline")
+EXECUTOR = ThreadPoolExecutor(max_workers=SETTINGS.pipeline_workers, thread_name_prefix="scenara-model-pipeline")
 
 # 同步执行超长流水线会阻塞 HTTP worker；超过该时长的配置应使用 async 模式。
 TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
@@ -47,7 +47,7 @@ TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
 
 # 默认管理员账户：首次启动（users 表为空）时自动创建。
 DEFAULT_ADMIN_USERNAME = "admin"
-# 不再使用固定弱口令：未配置 VMLAB_ADMIN_PASSWORD 时生成随机口令，只在启动日志中
+# 不再使用固定弱口令：未配置 SCENARA_MODEL_ADMIN_PASSWORD 时生成随机口令，只在启动日志中
 # 出现一次，避免"装完即弱口令"的默认不安全状态。
 GENERATED_ADMIN_PASSWORD_BYTES = 12
 
@@ -102,7 +102,7 @@ LOGIN_THROTTLE = _LoginThrottle(SETTINGS.login_max_failures, SETTINGS.login_lock
 def _bootstrap_admin_user() -> str | None:
     """users 表为空时创建默认管理员，保证系统首次启动即可登录。
 
-    返回自动生成的口令；配置了 VMLAB_ADMIN_PASSWORD 或用户已存在时返回 None。
+    返回自动生成的口令；配置了 SCENARA_MODEL_ADMIN_PASSWORD 或用户已存在时返回 None。
     """
     try:
         if STORE.count_users() > 0:
@@ -117,12 +117,12 @@ def _bootstrap_admin_user() -> str | None:
         if generated:
             logger.warning(
                 "created admin user %r with a generated password: %s\n"
-                "请记录该口令；可设置 VMLAB_ADMIN_PASSWORD 或执行 `vmlab user set-password` 修改",
+                "请记录该口令；可设置 SCENARA_MODEL_ADMIN_PASSWORD 或执行 `scenara-model user set-password` 修改",
                 DEFAULT_ADMIN_USERNAME,
                 password,
             )
             return password
-        logger.info("created admin user %r with VMLAB_ADMIN_PASSWORD", DEFAULT_ADMIN_USERNAME)
+        logger.info("created admin user %r with SCENARA_MODEL_ADMIN_PASSWORD", DEFAULT_ADMIN_USERNAME)
         return None
     except Exception:  # noqa: BLE001 - 引导失败不应阻止服务可用（例如只读 DB）
         logger.exception("admin user bootstrap failed")
@@ -188,7 +188,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="Vision Model Lab",
+    title="Scenara Model",
     version=__version__,
     description="Management API for vision model research artifacts, dataset manifests, experiments, and delivery packages.",
     lifespan=lifespan,

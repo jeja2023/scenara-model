@@ -82,13 +82,13 @@ class S3ObjectStore:
             try:
                 import boto3  # pyright: ignore[reportMissingImports]
             except ImportError as exc:  # pragma: no cover - depends on optional deployment extra
-                raise RuntimeError("boto3 is required for s3/minio object storage; install vision-model-lab[s3].") from exc
+                raise RuntimeError("boto3 is required for s3/minio object storage; install scenara-model[s3].") from exc
             self.client = boto3.client(
                 "s3",
                 endpoint_url=endpoint_url,
                 region_name=region_name,
-                aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or os.environ.get("VMLAB_S3_ACCESS_KEY_ID"),
-                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or os.environ.get("VMLAB_S3_SECRET_ACCESS_KEY"),
+                aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or os.environ.get("SCENARA_MODEL_S3_ACCESS_KEY_ID"),
+                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or os.environ.get("SCENARA_MODEL_S3_SECRET_ACCESS_KEY"),
             )
 
     def _key_for(self, key: str) -> str:
@@ -117,7 +117,7 @@ def object_store_from_settings(backend: str, uri: str) -> ObjectStore:
     if normalized == "local":
         return LocalObjectStore(uri)
     if normalized in {"s3", "minio"}:
-        endpoint = os.environ.get("VMLAB_S3_ENDPOINT_URL") or os.environ.get("AWS_ENDPOINT_URL_S3")
-        region = os.environ.get("VMLAB_S3_REGION") or os.environ.get("AWS_REGION")
+        endpoint = os.environ.get("SCENARA_MODEL_S3_ENDPOINT_URL") or os.environ.get("AWS_ENDPOINT_URL_S3")
+        region = os.environ.get("SCENARA_MODEL_S3_REGION") or os.environ.get("AWS_REGION")
         return S3ObjectStore(uri, endpoint_url=endpoint, region_name=region)
     raise ValueError(f"Unsupported object storage backend: {backend}")

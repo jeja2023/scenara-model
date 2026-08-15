@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from vision_model_lab.model_card import ModelCardIssue, validate_model_card
-from vision_model_lab.naming import parse_artifact_name
-from vision_model_lab.utils import ensure_dir, non_empty_lines, sha256_file, unique_preserve_order, write_yaml
+from scenara_model.model_card import ModelCardIssue, validate_model_card
+from scenara_model.naming import parse_artifact_name
+from scenara_model.utils import ensure_dir, non_empty_lines, sha256_file, unique_preserve_order, write_yaml
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 

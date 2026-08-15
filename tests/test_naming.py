@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from vision_model_lab.naming import parse_artifact_name
+from scenara_model.naming import parse_artifact_name
 
 
 def test_parse_artifact_name_accepts_standard_name() -> None:

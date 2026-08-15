@@ -1,9 +1,9 @@
-"""视觉模型实验室一键启动入口。
+"""景枢模型平台一键启动入口。
 
 用法（任意目录下均可）：
-    python start.py [--host 127.0.0.1] [--port 8080] [--skip-install] [--skip-frontend-build]
+    python start.py [--host 127.0.0.1] [--port 8080] [--skip-install] [--with-legacy-frontend]
 
-等价于 python scripts/start_lab.py，参数原样透传。
+等价于 python scripts/start_model.py，参数原样透传。
 """
 from __future__ import annotations
 
@@ -20,9 +20,9 @@ def main() -> int:
 
     root = Path(__file__).resolve().parent
     sys.path.insert(0, str(root / "scripts"))
-    from start_lab import main as start_lab_main
+    from start_model import main as start_model_main
 
-    return start_lab_main(sys.argv[1:])
+    return start_model_main(sys.argv[1:])
 
 
 if __name__ == "__main__":

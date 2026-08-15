@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from vision_model_lab.naming import is_semver
-from vision_model_lab.utils import read_jsonl
+from scenara_model.naming import is_semver
+from scenara_model.utils import read_jsonl
 
 ALLOWED_SPLITS = {"train", "val", "test", "regression", "edge"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}

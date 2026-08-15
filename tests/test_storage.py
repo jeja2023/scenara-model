@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from vision_model_lab.storage import MetadataStore
+from scenara_model.storage import MetadataStore
 
 
 def test_metadata_store_initializes_file_database_without_probe_files(workspace_tmp_path: Path) -> None:
@@ -26,7 +26,7 @@ def test_metadata_store_initializes_file_database_without_probe_files(workspace_
 
     assert saved["id"] == "storage_file_test"
     assert database.exists()
-    assert not list(workspace_tmp_path.glob(".vmlab-wal-probe-*"))
+    assert not list(workspace_tmp_path.glob(".scenara-model-wal-probe-*"))
 
 
 def test_file_database_uses_wal_not_memory_journal(workspace_tmp_path: Path) -> None:
@@ -101,7 +101,7 @@ def test_metadata_store_job_logs_artifacts_and_mlops_records() -> None:
 def test_alembic_upgrade_supports_plain_sqlite_path_and_creates_base_tables(workspace_tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     database = workspace_tmp_path / "alembic_upgrade.sqlite3"
-    env = {**os.environ, "VMLAB_WORKSPACE": str(repo_root), "VMLAB_METADATA_DB": str(database)}
+    env = {**os.environ, "SCENARA_MODEL_WORKSPACE": str(repo_root), "SCENARA_MODEL_METADATA_DB": str(database)}
 
     subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=repo_root, env=env, check=True, capture_output=True, text=True)
 
@@ -261,7 +261,7 @@ def test_reset_preserves_nonempty_wal_file(workspace_tmp_path: Path) -> None:
 
 def test_prepare_sql_handles_prefix_parameter_names_and_literal_question_marks() -> None:
     """回归：PG SQL 改写必须按词边界替换命名参数，前缀参数名不得互相破坏。"""
-    from vision_model_lab.storage import _PostgresConnectionAdapter
+    from scenara_model.storage import _PostgresConnectionAdapter
 
     adapter = _PostgresConnectionAdapter.__new__(_PostgresConnectionAdapter)
 
@@ -285,9 +285,9 @@ def test_storage_migrate_stamps_legacy_database_created_by_builtin_ddl(workspace
     # 先用运行时内置 DDL 建库（模拟 0.4.x 存量库，无 alembic_version）。
     MetadataStore(database)
 
-    env = {**os.environ, "VMLAB_WORKSPACE": str(repo_root)}
+    env = {**os.environ, "SCENARA_MODEL_WORKSPACE": str(repo_root)}
     result = subprocess.run(
-        [sys.executable, "-m", "vision_model_lab.cli", "storage", "migrate", "--uri", str(database)],
+        [sys.executable, "-m", "scenara_model.cli", "storage", "migrate", "--uri", str(database)],
         cwd=repo_root,
         env=env,
         capture_output=True,
@@ -299,7 +299,7 @@ def test_storage_migrate_stamps_legacy_database_created_by_builtin_ddl(workspace
     assert "stamped existing schema" in result.stdout
     # 幂等：再跑一次走正常 upgrade 路径。
     second = subprocess.run(
-        [sys.executable, "-m", "vision_model_lab.cli", "storage", "migrate", "--uri", str(database)],
+        [sys.executable, "-m", "scenara_model.cli", "storage", "migrate", "--uri", str(database)],
         cwd=repo_root,
         env=env,
         capture_output=True,

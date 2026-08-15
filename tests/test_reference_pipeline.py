@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from vision_model_lab.adapters.reference_identity import export_onnx, run_evaluation, run_training
+from scenara_model.adapters.reference_identity import export_onnx, run_evaluation, run_training
 
 
 def test_reference_identity_pipeline_runs() -> None:

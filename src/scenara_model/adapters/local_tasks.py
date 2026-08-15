@@ -12,17 +12,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from vision_model_lab.adapters.base import AdapterResult
-from vision_model_lab.datasets.manifest import validate_manifest
-from vision_model_lab.export.onnx_checks import check_onnx_loadable
-from vision_model_lab.utils import ensure_dir, read_yaml, sha256_file, write_json
+from scenara_model.adapters.base import AdapterResult
+from scenara_model.datasets.manifest import validate_manifest
+from scenara_model.export.onnx_checks import check_onnx_loadable
+from scenara_model.utils import ensure_dir, read_yaml, sha256_file, write_json
 
 LogLineSink = Callable[[str, str], None]
 """外部命令逐行日志回调：(stream, line)。"""
 
 
 def _workspace_root() -> Path:
-    return Path(os.environ.get("VMLAB_WORKSPACE", Path.cwd())).resolve()
+    return Path(os.environ.get("SCENARA_MODEL_WORKSPACE", Path.cwd())).resolve()
 
 
 def _experiment_dir(config: dict[str, Any], root: str | Path = "experiments/local_runs") -> Path:
@@ -59,7 +59,7 @@ def _write_identity_like_onnx(path: Path, *, input_shape: list[int], output_shap
         [helper.make_tensor_value_info("input", TensorProto.FLOAT, input_shape)],
         [helper.make_tensor_value_info("output", TensorProto.FLOAT, output_shape)],
     )
-    model = helper.make_model(graph, producer_name="vision-model-lab-local-task", opset_imports=[helper.make_operatorsetid("", 17)])
+    model = helper.make_model(graph, producer_name="scenara-model-local-task", opset_imports=[helper.make_operatorsetid("", 17)])
     model.ir_version = 8
     onnx.save(model, path)
 
@@ -114,16 +114,16 @@ def _resolve_command_cwd(cwd: str | Path) -> Path:
 
 
 # 训练脚本确实需要的少数平台变量：workspace 用于定位数据与产物目录。
-_ENV_ALLOWLIST = {"VMLAB_WORKSPACE"}
-# 平台配置与凭证一律不进入子进程。VMLAB_METADATA_DB 会携带 PostgreSQL DSN 中的
-# 明文口令，VMLAB_ADMIN_PASSWORD 是控制台管理员口令。
-_ENV_BLOCKED_PREFIXES = ("VMLAB_", "AWS_", "POSTGRES_", "MINIO_", "PG")
+_ENV_ALLOWLIST = {"SCENARA_MODEL_WORKSPACE"}
+# 平台配置与凭证一律不进入子进程。SCENARA_MODEL_METADATA_DB 会携带 PostgreSQL DSN 中的
+# 明文口令，SCENARA_MODEL_ADMIN_PASSWORD 是控制台管理员口令。
+_ENV_BLOCKED_PREFIXES = ("SCENARA_MODEL_", "AWS_", "POSTGRES_", "MINIO_", "PG")
 _ENV_BLOCKED_KEYWORDS = ("PASSWORD", "SECRET", "TOKEN", "CREDENTIAL", "ACCESS_KEY", "PRIVATE_KEY", "DSN")
 
 
 def _env_passthrough() -> set[str]:
     """部署方显式放行的变量名（逗号分隔），用于训练确需的第三方凭证。"""
-    raw = os.environ.get("VMLAB_EXTERNAL_COMMAND_ENV_PASSTHROUGH", "")
+    raw = os.environ.get("SCENARA_MODEL_EXTERNAL_COMMAND_ENV_PASSTHROUGH", "")
     return {item.strip().upper() for item in raw.split(",") if item.strip()}
 
 
@@ -140,9 +140,9 @@ def _command_env() -> dict[str, str]:
     """外部命令环境：剥离平台配置与全部凭证类变量。
 
     按前缀 + 关键字匹配而非精确列举——精确列举会在新增配置项时静默失效，
-    VMLAB_METADATA_DB（含 PG 口令）与 VMLAB_ADMIN_PASSWORD 就是这样漏掉的。
+    SCENARA_MODEL_METADATA_DB（含 PG 口令）与 SCENARA_MODEL_ADMIN_PASSWORD 就是这样漏掉的。
     训练确需的第三方凭证（如 HF_TOKEN）请通过
-    VMLAB_EXTERNAL_COMMAND_ENV_PASSTHROUGH 显式放行。
+    SCENARA_MODEL_EXTERNAL_COMMAND_ENV_PASSTHROUGH 显式放行。
     """
     passthrough = _env_passthrough()
     return {key: value for key, value in os.environ.items() if not _is_sensitive_env(key, passthrough)}
@@ -251,9 +251,9 @@ def _run_external_command(
     should_cancel: Callable[[], bool] | None = None,
     log_sink: LogLineSink | None = None,
 ) -> dict[str, Any]:
-    timeout = _int_env("VMLAB_EXTERNAL_COMMAND_TIMEOUT_SECONDS", 3600)
-    log_limit = _int_env("VMLAB_EXTERNAL_COMMAND_LOG_MAX_CHARS", 20000)
-    allow_shell = _bool_env("VMLAB_ALLOW_SHELL_COMMANDS", False)
+    timeout = _int_env("SCENARA_MODEL_EXTERNAL_COMMAND_TIMEOUT_SECONDS", 3600)
+    log_limit = _int_env("SCENARA_MODEL_EXTERNAL_COMMAND_LOG_MAX_CHARS", 20000)
+    allow_shell = _bool_env("SCENARA_MODEL_ALLOW_SHELL_COMMANDS", False)
     try:
         resolved_cwd = _resolve_command_cwd(cwd)
     except ValueError as exc:
@@ -265,7 +265,7 @@ def _run_external_command(
                 "command": command,
                 "returncode": None,
                 "stdout": "",
-                "stderr": "String shell commands are disabled; use an argv list or set VMLAB_ALLOW_SHELL_COMMANDS=true.",
+                "stderr": "String shell commands are disabled; use an argv list or set SCENARA_MODEL_ALLOW_SHELL_COMMANDS=true.",
                 "ok": False,
                 "error_code": "external.shell_disabled",
             }

@@ -12,12 +12,12 @@ if config.config_file_name is not None:
 
 
 def _metadata_db_url() -> str:
-    value = os.environ.get("VMLAB_METADATA_DB", "sqlite:///artifacts/vision_model_lab.sqlite3")
+    value = os.environ.get("SCENARA_MODEL_METADATA_DB", "sqlite:///artifacts/scenara_model.sqlite3")
     if value == ":memory:":
         return "sqlite:///:memory:"
     if "://" in value:
         return value
-    workspace_root = Path(os.environ.get("VMLAB_WORKSPACE", Path.cwd())).resolve()
+    workspace_root = Path(os.environ.get("SCENARA_MODEL_WORKSPACE", Path.cwd())).resolve()
     path = Path(value)
     if not path.is_absolute():
         path = (workspace_root / path).resolve()

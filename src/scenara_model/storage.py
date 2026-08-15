@@ -1263,7 +1263,7 @@ class PostgresMetadataStore(MetadataStore):
             self._pool = ConnectionPool(
                 str(self.path),
                 min_size=1,
-                max_size=int(os.environ.get("VMLAB_PG_POOL_MAX_SIZE", "8")),
+                max_size=int(os.environ.get("SCENARA_MODEL_PG_POOL_MAX_SIZE", "8")),
                 timeout=30,
                 open=True,
             )
@@ -1275,7 +1275,7 @@ class PostgresMetadataStore(MetadataStore):
             import psycopg
             from psycopg.rows import dict_row
         except ImportError as exc:  # pragma: no cover - optional deployment extra
-            raise RuntimeError("psycopg is required for PostgreSQL metadata storage; install vision-model-lab[postgres].") from exc
+            raise RuntimeError("psycopg is required for PostgreSQL metadata storage; install scenara-model[postgres].") from exc
         pool = self._ensure_pool()
         if pool:
             # 连接池路径：借还连接，PG 自身保证并发安全，无需进程级锁。

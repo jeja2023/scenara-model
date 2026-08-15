@@ -1,4 +1,4 @@
-# Vision Model Lab Frontend
+# Scenara Model Frontend
 
 React + TypeScript 管理台源码。
 
@@ -18,7 +18,7 @@ http://127.0.0.1:8080
 后端启动：
 
 ```powershell
-python -m vision_model_lab.cli serve --host 127.0.0.1 --port 8080
+python -m scenara_model.cli serve --host 127.0.0.1 --port 8080
 ```
 
 ## 生产构建

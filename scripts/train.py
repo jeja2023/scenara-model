@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from vision_model_lab.adapters.registry import run_stage
+from scenara_model.adapters.registry import run_stage
 
 
 def main() -> int:

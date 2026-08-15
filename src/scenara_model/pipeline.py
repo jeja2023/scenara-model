@@ -9,16 +9,16 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from vision_model_lab.adapters.registry import run_stage
-from vision_model_lab.packaging.model_package import create_model_package, validate_model_package
-from vision_model_lab.trust import build_model_card_data, load_stage_reports, package_profile, validate_package_trust
-from vision_model_lab.utils import ensure_dir, read_jsonl, read_yaml, write_json
+from scenara_model.adapters.registry import run_stage
+from scenara_model.packaging.model_package import create_model_package, validate_model_package
+from scenara_model.trust import build_model_card_data, load_stage_reports, package_profile, validate_package_trust
+from scenara_model.utils import ensure_dir, read_jsonl, read_yaml, write_json
 
 SYNTHETIC_JPEG_BYTES = bytes.fromhex("ffd8ffe000104a46494600010101000100010000ffd9")
 
 
 def _workspace_root() -> Path:
-    return Path(os.environ.get("VMLAB_WORKSPACE", Path.cwd())).resolve()
+    return Path(os.environ.get("SCENARA_MODEL_WORKSPACE", Path.cwd())).resolve()
 
 
 class PipelineAlreadyRunning(RuntimeError):
@@ -217,7 +217,7 @@ def _run_stage_safely(
     log_sink: LogLineSink | None = None,
 ) -> Any:
     """阶段级异常兜底：任何适配器异常转成结构化 failed 载荷，保留已完成阶段的结果。"""
-    from vision_model_lab.adapters.base import AdapterResult
+    from scenara_model.adapters.base import AdapterResult
 
     try:
         return run_stage(stage, config_path, onnx_path=onnx_path, should_cancel=should_cancel, log_sink=log_sink)

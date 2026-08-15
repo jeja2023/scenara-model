@@ -4,30 +4,30 @@
 
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
-| `VMLAB_WORKSPACE` | 当前工作目录 | 工作区根路径 |
-| `VMLAB_METADATA_DB` | `artifacts/vision_model_lab.sqlite3` | SQLite 元数据路径或 PostgreSQL DSN；`:memory:` 仅供测试，重启即丢数据 |
-| `VMLAB_CORS_ORIGINS` | `*` | API CORS 白名单，生产应显式配置 |
-| `VMLAB_SERVE_FRONTEND` | `true` | 是否由 FastAPI 托管前端构建产物 |
-| `VMLAB_FRONTEND_DIST` | `frontend/dist` | 前端构建目录 |
-| `VMLAB_MAX_PACKAGE_SCAN_FILES` | `500` | 模型包扫描上限 |
-| `VMLAB_STORAGE_BACKEND` | `local` | 对象存储后端：`local`、`s3`、`minio` |
-| `VMLAB_STORAGE_URI` | 工作区路径 | local 根路径或 `s3://bucket/prefix` / `minio://bucket/prefix` |
-| `VMLAB_AUTH_TOKEN` | 空 | 静态服务令牌，供 CI 与脚本通过 `Authorization: Bearer <token>` 认证 |
-| `VMLAB_ADMIN_PASSWORD` | 空 | 首次启动创建 admin 的口令；未设置时自动生成随机口令并打印到启动日志 |
-| `VMLAB_SESSION_TTL_HOURS` | `24` | 登录会话有效期 |
-| `VMLAB_LOGIN_MAX_FAILURES` | `5` | 同一用户名+IP 连续登录失败上限 |
-| `VMLAB_LOGIN_LOCKOUT_SECONDS` | `300` | 达到失败上限后的锁定时长 |
-| `VMLAB_LOG_RETENTION_DAYS` | `30` | 任务日志与审计事件保留天数 |
-| `VMLAB_MAINTENANCE_INTERVAL_SECONDS` | `3600` | 周期维护间隔 |
-| `VMLAB_EXTERNAL_COMMAND_ENV_PASSTHROUGH` | 空 | 显式放行给外部命令的环境变量名（逗号分隔） |
-| `VMLAB_MAX_UPLOAD_BYTES` | `524288000` | 上传文件大小上限 |
-| `VMLAB_PIPELINE_WORKERS` | `2` | 异步流水线线程池 worker 数 |
-| `VMLAB_EXTERNAL_COMMAND_TIMEOUT_SECONDS` | `3600` | 外部训练/导出/评估命令超时 |
-| `VMLAB_EXTERNAL_COMMAND_LOG_MAX_CHARS` | `20000` | 外部命令日志保留字符数 |
-| `VMLAB_ALLOW_SHELL_COMMANDS` | `false` | 是否允许字符串 shell 命令 |
-| `VMLAB_S3_ENDPOINT_URL` | 空 | MinIO 或兼容 S3 endpoint |
-| `VMLAB_S3_REGION` | 空 | S3 区域 |
-| `VMLAB_S3_ACCESS_KEY_ID` / `VMLAB_S3_SECRET_ACCESS_KEY` | 空 | 兼容 S3 凭证；也可使用 AWS 标准环境变量 |
+| `SCENARA_MODEL_WORKSPACE` | 当前工作目录 | 工作区根路径 |
+| `SCENARA_MODEL_METADATA_DB` | `artifacts/scenara_model.sqlite3` | SQLite 元数据路径或 PostgreSQL DSN；`:memory:` 仅供测试，重启即丢数据 |
+| `SCENARA_MODEL_CORS_ORIGINS` | `*` | API CORS 白名单，生产应显式配置 |
+| `SCENARA_MODEL_SERVE_FRONTEND` | `true` | 是否由 FastAPI 托管前端构建产物 |
+| `SCENARA_MODEL_FRONTEND_DIST` | `frontend/dist` | 前端构建目录 |
+| `SCENARA_MODEL_MAX_PACKAGE_SCAN_FILES` | `500` | 模型包扫描上限 |
+| `SCENARA_MODEL_STORAGE_BACKEND` | `local` | 对象存储后端：`local`、`s3`、`minio` |
+| `SCENARA_MODEL_STORAGE_URI` | 工作区路径 | local 根路径或 `s3://bucket/prefix` / `minio://bucket/prefix` |
+| `SCENARA_MODEL_AUTH_TOKEN` | 空 | 静态服务令牌，供 CI 与脚本通过 `Authorization: Bearer <token>` 认证 |
+| `SCENARA_MODEL_ADMIN_PASSWORD` | 空 | 首次启动创建 admin 的口令；未设置时自动生成随机口令并打印到启动日志 |
+| `SCENARA_MODEL_SESSION_TTL_HOURS` | `24` | 登录会话有效期 |
+| `SCENARA_MODEL_LOGIN_MAX_FAILURES` | `5` | 同一用户名+IP 连续登录失败上限 |
+| `SCENARA_MODEL_LOGIN_LOCKOUT_SECONDS` | `300` | 达到失败上限后的锁定时长 |
+| `SCENARA_MODEL_LOG_RETENTION_DAYS` | `30` | 任务日志与审计事件保留天数 |
+| `SCENARA_MODEL_MAINTENANCE_INTERVAL_SECONDS` | `3600` | 周期维护间隔 |
+| `SCENARA_MODEL_EXTERNAL_COMMAND_ENV_PASSTHROUGH` | 空 | 显式放行给外部命令的环境变量名（逗号分隔） |
+| `SCENARA_MODEL_MAX_UPLOAD_BYTES` | `524288000` | 上传文件大小上限 |
+| `SCENARA_MODEL_PIPELINE_WORKERS` | `2` | 异步流水线线程池 worker 数 |
+| `SCENARA_MODEL_EXTERNAL_COMMAND_TIMEOUT_SECONDS` | `3600` | 外部训练/导出/评估命令超时 |
+| `SCENARA_MODEL_EXTERNAL_COMMAND_LOG_MAX_CHARS` | `20000` | 外部命令日志保留字符数 |
+| `SCENARA_MODEL_ALLOW_SHELL_COMMANDS` | `false` | 是否允许字符串 shell 命令 |
+| `SCENARA_MODEL_S3_ENDPOINT_URL` | 空 | MinIO 或兼容 S3 endpoint |
+| `SCENARA_MODEL_S3_REGION` | 空 | S3 区域 |
+| `SCENARA_MODEL_S3_ACCESS_KEY_ID` / `SCENARA_MODEL_S3_SECRET_ACCESS_KEY` | 空 | 兼容 S3 凭证；也可使用 AWS 标准环境变量 |
 
 ## 本地验收
 
@@ -55,8 +55,8 @@ npm run build
 ## API 启动
 
 ```powershell
-$env:VMLAB_METADATA_DB="artifacts/vision_model_lab.sqlite3"
-python scripts/serve_api.py --host 127.0.0.1 --port 8080 --metadata-db artifacts/vision_model_lab.sqlite3
+$env:SCENARA_MODEL_METADATA_DB="artifacts/scenara_model.sqlite3"
+python scripts/serve_api.py --host 127.0.0.1 --port 8080 --metadata-db artifacts/scenara_model.sqlite3
 ```
 
 ## Docker
@@ -73,10 +73,10 @@ docker compose up --build
 docker build `
   --build-arg NODE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/node:22-alpine `
   --build-arg PYTHON_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/python:3.12-slim `
-  -t vision-model-lab:local .
+  -t scenara-model:local .
 ```
 
-当前 Dockerfile 默认使用 Docker Hub 官方镜像（`node:22-alpine`、`python:3.12-slim`），与 CI 行为一致；受限网络环境按上例通过 build args 覆盖为内部镜像源。镜像以非 root 用户 `vmlab` 运行并内置 HEALTHCHECK。
+当前 Dockerfile 默认使用 Docker Hub 官方镜像（`node:22-alpine`、`python:3.12-slim`），与 CI 行为一致；受限网络环境按上例通过 build args 覆盖为内部镜像源。镜像以非 root 用户 `scenara-model` 运行并内置 HEALTHCHECK。
 
 可选生产形态（PostgreSQL / MinIO）：
 
@@ -93,7 +93,7 @@ docker compose `
 - 模型包严格模式必须校验 ONNX、sha256、模型卡、labels、样例。
 - API 路径不允许逃逸工作区。
 - CORS 在生产环境必须收紧到明确域名。
-- 生产环境必须设置 `VMLAB_ADMIN_PASSWORD`，自动生成口令仅适合首次本地启动；CI 与脚本可改用 `VMLAB_AUTH_TOKEN`。
+- 生产环境必须设置 `SCENARA_MODEL_ADMIN_PASSWORD`，自动生成口令仅适合首次本地启动；CI 与脚本可改用 `SCENARA_MODEL_AUTH_TOKEN`。
 - 多实例生产部署建议使用 PostgreSQL，并把对象存储切换为 MinIO/S3 或内部制品系统。
 - 大文件不提交 Git，只提交 manifest、配置、模板和报告。
 - 生产流水线默认拒绝合成 ONNX、自报指标和缺少 checkpoint 的训练；仅 `package.profile: smoke` 可显式放行开发基线。
@@ -106,10 +106,10 @@ docker compose `
 - 前端静态文件回退会校验路径必须停留在 `frontend/dist` 内，禁止通过编码后的 `..` 读取工作区文件。
 - 全部 `/api` 接口（登录除外）均要求会话或静态令牌；生产环境应在网关层补充统一限流与访问控制。
 - 流水线支持异步 job：`POST /api/pipelines/run` 传入 `{"async": true}` 后，可通过 `/api/pipelines/jobs` 查询状态，并可对 job 执行 cancel/retry。
-- 外部训练命令默认只允许 argv list；字符串 shell 命令默认禁用。确需兼容旧命令时设置 `VMLAB_ALLOW_SHELL_COMMANDS=true`，并限制 `VMLAB_EXTERNAL_COMMAND_TIMEOUT_SECONDS` 和日志长度。
-- 本地对象存储使用 `VMLAB_STORAGE_URI`，默认 `artifacts/object-store`；对象 key 会校验不能逃逸存储根目录。
+- 外部训练命令默认只允许 argv list；字符串 shell 命令默认禁用。确需兼容旧命令时设置 `SCENARA_MODEL_ALLOW_SHELL_COMMANDS=true`，并限制 `SCENARA_MODEL_EXTERNAL_COMMAND_TIMEOUT_SECONDS` 和日志长度。
+- 本地对象存储使用 `SCENARA_MODEL_STORAGE_URI`，默认 `artifacts/object-store`；对象 key 会校验不能逃逸存储根目录。
 - SQLite 使用 WAL journal mode（回落顺序 `WAL -> TRUNCATE -> DELETE`，并校验 PRAGMA 实际生效值）、busy timeout 和每线程长连接；多实例或多人生产部署仍建议迁移 PostgreSQL。
-- 上传入口受 `VMLAB_MAX_UPLOAD_BYTES` 限制，超限文件会被拒绝并清理部分写入。
+- 上传入口受 `SCENARA_MODEL_MAX_UPLOAD_BYTES` 限制，超限文件会被拒绝并清理部分写入。
 ## Python 环境隔离建议
 
 当前项目依赖应安装在专用虚拟环境中，避免与全局机器学习工具链互相牵制：
@@ -130,14 +130,14 @@ python -m pip check
 - `.venv\Scripts\python.exe -m pytest` 和全局 `python -m pytest` 均为 32 passed。
 - `npm run build` 通过，`npm audit --omit dev` 为 0 vulnerabilities。
 - `python scripts\acceptance_check.py` 通过。
-- 默认 `docker build -t vision-model-lab:0.3.0 .` 通过，镜像 API 导入 smoke test 通过。
+- 默认 `docker build -t scenara-model:0.3.0 .` 通过，镜像 API 导入 smoke test 通过。
 - 完整说明见 `docs/RELEASE_0.3.0.md`。
 
 ## 0.4.0 发布门禁
 
 - Python 包版本、运行时 `__version__`、前端包版本已统一为 `0.4.0`。
 - `.venv\Scripts\python.exe -m pytest` 当前为 37 passed。
-- `npm run build` 通过，构建产物版本为 `vision-model-lab-frontend@0.4.0`。
+- `npm run build` 通过，构建产物版本为 `scenara-model-frontend@0.4.0`。
 - S3/MinIO、PostgreSQL、Alembic 均作为可选 extra 接入，默认安装保持轻量。
 - 任务日志、产物索引、数据集版本、模型注册、发布审批和灰度/回滚 API 均有回归测试覆盖。
 - 完整说明见 `docs/RELEASE_0.4.0.md`。
@@ -145,7 +145,7 @@ python -m pip check
 
 - Python 包版本、运行时 `__version__`、前端包版本和 lockfile 已统一为 `0.4.1`。
 - `python -m pytest` 当前为 39 passed，2 warnings。
-- `npm run build` 通过，构建产物版本为 `vision-model-lab-frontend@0.4.1`。
+- `npm run build` 通过，构建产物版本为 `scenara-model-frontend@0.4.1`。
 - `python -m compileall -q src tests migrations` 通过。
 - 异步流水线取消、Alembic baseline、普通 SQLite 迁移路径、前端取消状态反馈均有回归测试或构建校验覆盖。
 - 完整说明见 `docs/RELEASE_0.4.1.md`。

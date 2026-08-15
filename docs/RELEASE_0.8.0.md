@@ -1,4 +1,4 @@
-# Vision Model Lab 0.8.0 发布说明
+# Scenara Model 0.8.0 发布说明
 
 发布日期：2026-07-28
 

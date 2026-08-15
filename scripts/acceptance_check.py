@@ -60,7 +60,7 @@ def main() -> int:
         run([sys.executable, "scripts/run_pipeline.py", "--config", "configs/experiments/detection_yolo_baseline.yml", "--package"]),
         run([sys.executable, "scripts/validate_model_package.py", "shared-models", "--strict-hash", "--strict-onnx"]),
         run([sys.executable, "scripts/hash_artifact.py", "MODEL_RND_TRAINING_PLAN.md"]),
-        run([sys.executable, "-c", "import sys; sys.path.insert(0, 'src'); from vision_model_lab.api import app; print(app.title)"]),
+        run([sys.executable, "-c", "import sys; sys.path.insert(0, 'src'); from scenara_model.api import app; print(app.title)"]),
     ])
     if args.runtime_base_url:
         checks.append(run([sys.executable, "scripts/runtime_check.py", "--base-url", args.runtime_base_url]))

@@ -4,7 +4,7 @@ import os
 import shutil
 from pathlib import Path
 
-from vision_model_lab.utils import sha256_file
+from scenara_model.utils import sha256_file
 
 
 def test_sha256_cache_is_bypassed_for_freshly_copied_files(workspace_tmp_path: Path) -> None:

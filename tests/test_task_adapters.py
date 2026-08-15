@@ -4,32 +4,32 @@ from pathlib import Path
 
 import pytest
 
-from vision_model_lab.adapters.registry import list_adapters, run_stage
-from vision_model_lab.pipeline import run_experiment_pipeline
-from vision_model_lab.utils import write_yaml
+from scenara_model.adapters.registry import list_adapters, run_stage
+from scenara_model.pipeline import run_experiment_pipeline
+from scenara_model.utils import write_yaml
 
 
 def test_command_env_strips_platform_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     """回归：DSN 口令与管理员口令绝不能流入外部训练命令。"""
-    from vision_model_lab.adapters.local_tasks import _command_env
+    from scenara_model.adapters.local_tasks import _command_env
 
-    monkeypatch.setenv("VMLAB_METADATA_DB", "postgresql://u:secret@db:5432/vmlab")
-    monkeypatch.setenv("VMLAB_ADMIN_PASSWORD", "admin-secret")
-    monkeypatch.setenv("VMLAB_AUTH_TOKEN", "tok")
+    monkeypatch.setenv("SCENARA_MODEL_METADATA_DB", "postgresql://u:secret@db:5432/scenara_model")
+    monkeypatch.setenv("SCENARA_MODEL_ADMIN_PASSWORD", "admin-secret")
+    monkeypatch.setenv("SCENARA_MODEL_AUTH_TOKEN", "tok")
     monkeypatch.setenv("HF_TOKEN", "hf-secret")
     monkeypatch.setenv("PATH", "/usr/bin")
-    monkeypatch.delenv("VMLAB_EXTERNAL_COMMAND_ENV_PASSTHROUGH", raising=False)
+    monkeypatch.delenv("SCENARA_MODEL_EXTERNAL_COMMAND_ENV_PASSTHROUGH", raising=False)
 
     env = _command_env()
 
-    assert "VMLAB_METADATA_DB" not in env
-    assert "VMLAB_ADMIN_PASSWORD" not in env
-    assert "VMLAB_AUTH_TOKEN" not in env
+    assert "SCENARA_MODEL_METADATA_DB" not in env
+    assert "SCENARA_MODEL_ADMIN_PASSWORD" not in env
+    assert "SCENARA_MODEL_AUTH_TOKEN" not in env
     assert "HF_TOKEN" not in env
     assert env["PATH"] == "/usr/bin"
 
     # 显式放行后才透传。
-    monkeypatch.setenv("VMLAB_EXTERNAL_COMMAND_ENV_PASSTHROUGH", "HF_TOKEN")
+    monkeypatch.setenv("SCENARA_MODEL_EXTERNAL_COMMAND_ENV_PASSTHROUGH", "HF_TOKEN")
     assert _command_env()["HF_TOKEN"] == "hf-secret"
 
 

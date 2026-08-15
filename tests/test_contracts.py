@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from vision_model_lab.contracts import validate_models_fragment, validate_release_decision
+from scenara_model.contracts import validate_models_fragment, validate_release_decision
 
 
 def test_models_fragment_template_is_valid() -> None:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from vision_model_lab.object_store import LocalObjectStore, S3ObjectStore
+from scenara_model.object_store import LocalObjectStore, S3ObjectStore
 
 
 def test_local_object_store_rejects_escaping_keys(workspace_tmp_path: Path) -> None:

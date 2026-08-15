@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "vision-model-lab"
-version = "0.8.0"
-description = "Model research, evaluation, ONNX export, and delivery tooling for vision systems."
+name = "scenara-model"
+version = "1.0.0.dev0"
+description = "Scenara model training, evaluation, registry, and immutable model package tooling."
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.110",
@@ -41,7 +41,7 @@ migrations = [
 ]
 
 [project.scripts]
-vmlab = "vision_model_lab.cli:main"
+scenara-model = "scenara_model.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

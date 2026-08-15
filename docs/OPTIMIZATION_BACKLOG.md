@@ -17,7 +17,7 @@
 ## 已完成（无需重做）
 
 - `storage.py`：journal mode 候选序列去掉排在最前的 `MEMORY` 并校验 PRAGMA 实际生效值；每线程一条长连接替代「每次 connect/close + 进程级锁」；`record_pipeline_job_log` 去掉回读；新增 `record_pipeline_job_logs` 批量写入与 `close()`。
-- `local_tasks.py`：`_command_env()` 改为前缀 + 关键字剥离，堵住 `VMLAB_METADATA_DB`（PG DSN 明文口令）与 `VMLAB_ADMIN_PASSWORD` 泄露；新增 `VMLAB_EXTERNAL_COMMAND_ENV_PASSTHROUGH` 放行开关。
+- `local_tasks.py`：`_command_env()` 改为前缀 + 关键字剥离，堵住 `SCENARA_MODEL_METADATA_DB`（PG DSN 明文口令）与 `SCENARA_MODEL_ADMIN_PASSWORD` 泄露；新增 `SCENARA_MODEL_EXTERNAL_COMMAND_ENV_PASSTHROUGH` 放行开关。
 - `api.py`：默认管理员口令改为随机生成；新增 `_LoginThrottle` 登录失败限流。
 - `settings.py`：新增 `login_max_failures`、`login_lockout_seconds`、`log_retention_days`、`maintenance_interval_seconds` 四个字段（后两个**尚无消费方**，见 P1-3）。
 
@@ -200,7 +200,7 @@ import os
 import shutil
 from pathlib import Path
 
-from vision_model_lab.utils import sha256_file
+from scenara_model.utils import sha256_file
 
 
 def test_sha256_cache_is_bypassed_for_freshly_copied_files(workspace_tmp_path: Path) -> None:
@@ -231,7 +231,7 @@ def test_sha256_cache_is_bypassed_for_freshly_copied_files(workspace_tmp_path: P
 | 文件 | 行 | 改为 |
 | --- | --- | --- |
 | `pyproject.toml` | 7 | `version = "0.6.0"` |
-| `src/vision_model_lab/__init__.py` | 5 | `__version__ = "0.6.0"` |
+| `src/scenara_model/__init__.py` | 5 | `__version__ = "0.6.0"` |
 | `frontend/package.json` | 3 | `"version": "0.6.0",` |
 | `frontend/package-lock.json` | 3 | `"version": "0.6.0",` |
 | `frontend/package-lock.json` | 9 | `"version": "0.6.0",` |
@@ -246,21 +246,21 @@ def test_sha256_cache_is_bypassed_for_freshly_copied_files(workspace_tmp_path: P
 
 ```markdown
 - local/S3/MinIO 对象存储入口、上传接口和误差样本摘要。
-- 用户名密码登录与会话令牌鉴权：除 `/api/auth/login` 与 `/health` 外，全部 `/api` 接口要求认证；`VMLAB_AUTH_TOKEN` 静态令牌并行支持 CI 与脚本调用。
+- 用户名密码登录与会话令牌鉴权：除 `/api/auth/login` 与 `/health` 外，全部 `/api` 接口要求认证；`SCENARA_MODEL_AUTH_TOKEN` 静态令牌并行支持 CI 与脚本调用。
 ```
 
 `docs/ARCHITECTURE.md` 的 API 清单在 `GET /health` 后插入 `POST /api/auth/login`、`POST /api/auth/logout`、`GET /api/auth/me`。
 
-`docs/PRODUCTION_READINESS.md` 环境变量表在 `VMLAB_AUTH_TOKEN` 后补：
+`docs/PRODUCTION_READINESS.md` 环境变量表在 `SCENARA_MODEL_AUTH_TOKEN` 后补：
 
 ```markdown
-| `VMLAB_ADMIN_PASSWORD` | 空 | 首次启动创建 admin 的口令；未设置时自动生成随机口令并打印到启动日志 |
-| `VMLAB_SESSION_TTL_HOURS` | `24` | 登录会话有效期 |
-| `VMLAB_LOGIN_MAX_FAILURES` | `5` | 同一用户名+IP 连续登录失败上限 |
-| `VMLAB_LOGIN_LOCKOUT_SECONDS` | `300` | 达到失败上限后的锁定时长 |
-| `VMLAB_LOG_RETENTION_DAYS` | `30` | 任务日志与审计事件保留天数 |
-| `VMLAB_MAINTENANCE_INTERVAL_SECONDS` | `3600` | 周期维护间隔 |
-| `VMLAB_EXTERNAL_COMMAND_ENV_PASSTHROUGH` | 空 | 显式放行给外部命令的环境变量名（逗号分隔） |
+| `SCENARA_MODEL_ADMIN_PASSWORD` | 空 | 首次启动创建 admin 的口令；未设置时自动生成随机口令并打印到启动日志 |
+| `SCENARA_MODEL_SESSION_TTL_HOURS` | `24` | 登录会话有效期 |
+| `SCENARA_MODEL_LOGIN_MAX_FAILURES` | `5` | 同一用户名+IP 连续登录失败上限 |
+| `SCENARA_MODEL_LOGIN_LOCKOUT_SECONDS` | `300` | 达到失败上限后的锁定时长 |
+| `SCENARA_MODEL_LOG_RETENTION_DAYS` | `30` | 任务日志与审计事件保留天数 |
+| `SCENARA_MODEL_MAINTENANCE_INTERVAL_SECONDS` | `3600` | 周期维护间隔 |
+| `SCENARA_MODEL_EXTERNAL_COMMAND_ENV_PASSTHROUGH` | 空 | 显式放行给外部命令的环境变量名（逗号分隔） |
 ```
 
 `docs/OPERATIONS.md:70` 与 `docs/PRODUCTION_READINESS.md:97` 那句已经过时的描述改为：
@@ -289,10 +289,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> int:
-    init_text = (ROOT / "src" / "vision_model_lab" / "__init__.py").read_text(encoding="utf-8")
+    init_text = (ROOT / "src" / "scenara_model" / "__init__.py").read_text(encoding="utf-8")
     match = re.search(r'__version__\s*=\s*"([^"]+)"', init_text)
     if match is None:
-        print("[版本] 无法从 src/vision_model_lab/__init__.py 解析 __version__", file=sys.stderr)
+        print("[版本] 无法从 src/scenara_model/__init__.py 解析 __version__", file=sys.stderr)
         return 2
     expected = match.group(1)
     problems: list[str] = []
@@ -427,15 +427,15 @@ ignore = [
 ```yaml
       - name: Smoke test image
         run: |
-          docker run --rm vision-model-lab:ci python -c "from vision_model_lab.api import app; print(app.title)"
-          docker run -d --name vmlab-ci -p 8080:8080 vision-model-lab:ci
+          docker run --rm scenara-model:ci python -c "from scenara_model.api import app; print(app.title)"
+          docker run -d --name scenara-model-ci -p 8080:8080 scenara-model:ci
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then break; fi
             sleep 2
           done
           curl -fsS http://127.0.0.1:8080/health | grep -q '"status":"ok"'
-          docker logs vmlab-ci
-          docker rm -f vmlab-ci
+          docker logs scenara-model-ci
+          docker rm -f scenara-model-ci
 ```
 
 ---
@@ -644,8 +644,8 @@ def test_recover_orphaned_jobs_spares_other_live_workers() -> None:
 ```dockerfile
 ARG NODE_IMAGE=node:22-alpine
 ARG PYTHON_IMAGE=python:3.12-slim
-# 需要 PostgreSQL / S3 后端时以 --build-arg VMLAB_EXTRAS=postgres,s3 构建。
-ARG VMLAB_EXTRAS=""
+# 需要 PostgreSQL / S3 后端时以 --build-arg SCENARA_MODEL_EXTRAS=postgres,s3 构建。
+ARG SCENARA_MODEL_EXTRAS=""
 
 FROM ${NODE_IMAGE} AS frontend
 
@@ -658,24 +658,24 @@ COPY frontend ./
 RUN npm run build
 
 FROM ${PYTHON_IMAGE} AS backend
-ARG VMLAB_EXTRAS
+ARG SCENARA_MODEL_EXTRAS
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    VMLAB_WORKSPACE=/app \
-    VMLAB_METADATA_DB=artifacts/vision_model_lab.sqlite3 \
-    VMLAB_SERVE_FRONTEND=true
+    SCENARA_MODEL_WORKSPACE=/app \
+    SCENARA_MODEL_METADATA_DB=artifacts/scenara_model.sqlite3 \
+    SCENARA_MODEL_SERVE_FRONTEND=true
 
 WORKDIR /app
 
 # 依赖层：用占位包只装第三方依赖。原先 COPY src 在 pip install 之前，
 # 导致任何源码改动都会触发依赖全量重装（注释声称的缓存优化并未生效）。
 COPY pyproject.toml README.md constraints.txt ./
-RUN mkdir -p src/vision_model_lab \
-    && printf '__version__ = "0.0.0"\n' > src/vision_model_lab/__init__.py \
-    && if [ -n "$VMLAB_EXTRAS" ]; then TARGET=".[$VMLAB_EXTRAS]"; else TARGET="."; fi \
+RUN mkdir -p src/scenara_model \
+    && printf '__version__ = "0.0.0"\n' > src/scenara_model/__init__.py \
+    && if [ -n "$SCENARA_MODEL_EXTRAS" ]; then TARGET=".[$SCENARA_MODEL_EXTRAS]"; else TARGET="."; fi \
     && pip install --no-cache-dir -c constraints.txt "$TARGET" \
-    && pip uninstall -y vision-model-lab \
+    && pip uninstall -y scenara-model \
     && rm -rf src
 
 # 源码层：只重装本项目自身，依赖层继续命中缓存。
@@ -692,15 +692,15 @@ RUN pip install --no-cache-dir --no-deps .
       context: .
       args:
         # postgres / minio profile 需要这些可选依赖，否则切后端会在启动时报缺包。
-        VMLAB_EXTRAS: postgres,s3
+        SCENARA_MODEL_EXTRAS: postgres,s3
 ```
 
 `environment` 里三项改为可覆盖：
 
 ```yaml
-      VMLAB_METADATA_DB: ${VMLAB_METADATA_DB:-artifacts/vision_model_lab.sqlite3}
-      VMLAB_STORAGE_BACKEND: ${VMLAB_STORAGE_BACKEND:-local}
-      VMLAB_STORAGE_URI: ${VMLAB_STORAGE_URI:-artifacts/object-store}
+      SCENARA_MODEL_METADATA_DB: ${SCENARA_MODEL_METADATA_DB:-artifacts/scenara_model.sqlite3}
+      SCENARA_MODEL_STORAGE_BACKEND: ${SCENARA_MODEL_STORAGE_BACKEND:-local}
+      SCENARA_MODEL_STORAGE_URI: ${SCENARA_MODEL_STORAGE_URI:-artifacts/object-store}
 ```
 
 **改动 3**：新增 `docker-compose.postgres.yml`：
@@ -711,14 +711,14 @@ RUN pip install --no-cache-dir --no-deps .
 #   docker compose -f docker-compose.yml -f docker-compose.postgres.yml \
 #     --profile postgres --profile minio up --build
 services:
-  vision-model-lab:
+  scenara-model:
     environment:
-      VMLAB_METADATA_DB: postgresql://vmlab:${VMLAB_POSTGRES_PASSWORD:-vmlab-dev-only}@postgres:5432/vmlab
-      VMLAB_STORAGE_BACKEND: minio
-      VMLAB_STORAGE_URI: minio://vmlab/models
-      VMLAB_S3_ENDPOINT_URL: http://minio:9000
-      VMLAB_S3_ACCESS_KEY_ID: ${VMLAB_MINIO_ROOT_USER:-vmlab}
-      VMLAB_S3_SECRET_ACCESS_KEY: ${VMLAB_MINIO_ROOT_PASSWORD:-vmlab-dev-only}
+      SCENARA_MODEL_METADATA_DB: postgresql://scenara-model:${SCENARA_MODEL_POSTGRES_PASSWORD:-scenara-model-dev-only}@postgres:5432/scenara-model
+      SCENARA_MODEL_STORAGE_BACKEND: minio
+      SCENARA_MODEL_STORAGE_URI: minio://scenara-model/models
+      SCENARA_MODEL_S3_ENDPOINT_URL: http://minio:9000
+      SCENARA_MODEL_S3_ACCESS_KEY_ID: ${SCENARA_MODEL_MINIO_ROOT_USER:-scenara-model}
+      SCENARA_MODEL_S3_SECRET_ACCESS_KEY: ${SCENARA_MODEL_MINIO_ROOT_PASSWORD:-scenara-model-dev-only}
     depends_on:
       postgres:
         condition: service_healthy
@@ -877,7 +877,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 - **前端令牌存 `localStorage`**（`api.ts:24`），XSS 可窃取。建议 httpOnly cookie + CSRF token，或至少配置 CSP。
 - **`downloadArtifact` 用 blob 全量载入内存**（`api.ts:236`），几百 MB 的 ONNX 会撑爆浏览器。建议短时签名 URL。
 - **401 自动登出只覆盖 `refresh()` 的 5 个请求**（`App.tsx:63`），其他页面 401 不会跳登录页。
-- **`vmlab user set-password --password <明文>`** 会进 shell history 与 `ps` 输出（`cli.py:291`），应支持 stdin / 交互输入。
+- **`scenara-model user set-password --password <明文>`** 会进 shell history 与 `ps` 输出（`cli.py:291`），应支持 stdin / 交互输入。
 - **`_int_env` / `_bool_env` 在 `settings.py` 与 `local_tasks.py` 重复实现且行为不一致**（一个抛错、一个静默 fallback）；后者绕过 Settings 直接读 env。
 - **`api.py` 模块级全局 `SETTINGS` / `STORE` / `EXECUTOR`**，测试只能 monkeypatch。建议 `app.state` + 依赖注入。
 - **`pipeline.py:283` 的 `_example_dir_for` 用相对路径** `Path("artifacts/examples")`，依赖进程 CWD，与 `local_tasks.py` 已锚定 workspace 的做法不一致。

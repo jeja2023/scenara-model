@@ -1,4 +1,4 @@
-# Vision Model Lab 0.3.0 发布说明
+# Scenara Model 0.3.0 发布说明
 
 发布日期：2026-07-03
 
@@ -30,8 +30,8 @@
 
 - 工作区路径、前端 fallback、模型包 `model_id`、对象存储 key、外部命令 cwd 和导出产物路径均校验不能逃逸允许范围。
 - shell 字符串命令默认禁用，推荐使用 argv list。
-- 上传大小由 `VMLAB_MAX_UPLOAD_BYTES` 控制，默认 500 MiB。
-- 外部命令超时由 `VMLAB_EXTERNAL_COMMAND_TIMEOUT_SECONDS` 控制，日志由 `VMLAB_EXTERNAL_COMMAND_LOG_MAX_CHARS` 截断。
+- 上传大小由 `SCENARA_MODEL_MAX_UPLOAD_BYTES` 控制，默认 500 MiB。
+- 外部命令超时由 `SCENARA_MODEL_EXTERNAL_COMMAND_TIMEOUT_SECONDS` 控制，日志由 `SCENARA_MODEL_EXTERNAL_COMMAND_LOG_MAX_CHARS` 截断。
 
 ## 存储与兼容性
 
@@ -54,8 +54,8 @@
 - 默认 Docker 构建命令已验证：
 
 ```powershell
-docker build -t vision-model-lab:0.3.0 .
-docker run --rm vision-model-lab:0.3.0 python -c "from vision_model_lab.api import app; print(app.title)"
+docker build -t scenara-model:0.3.0 .
+docker run --rm scenara-model:0.3.0 python -c "from scenara_model.api import app; print(app.title)"
 ```
 
 ## 验证结果
@@ -67,8 +67,8 @@ docker run --rm vision-model-lab:0.3.0 python -c "from vision_model_lab.api impo
 - `npm run build`：通过。
 - `npm audit --omit dev`：0 vulnerabilities。
 - `python scripts\acceptance_check.py`：通过。
-- `docker build -t vision-model-lab:0.3.0 .`：通过。
-- Docker 镜像导入 API smoke test：输出 `Vision Model Lab`。
+- `docker build -t scenara-model:0.3.0 .`：通过。
+- Docker 镜像导入 API smoke test：输出 `Scenara Model`。
 
 ## 升级注意
 

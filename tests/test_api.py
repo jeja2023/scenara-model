@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-import vision_model_lab.api as api
-from vision_model_lab.storage import MetadataStore
-from vision_model_lab.utils import write_yaml
+import scenara_model.api as api
+from scenara_model.storage import MetadataStore
+from scenara_model.utils import write_yaml
 
 TEST_ADMIN_PASSWORD = "test-admin-password"
 
@@ -55,7 +55,7 @@ def test_health_endpoint() -> None:
 
 
 def test_health_does_not_run_sqlite_pragma_for_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(api, "SETTINGS", replace(api.SETTINGS, metadata_db="postgresql://localhost/vmlab"))
+    monkeypatch.setattr(api, "SETTINGS", replace(api.SETTINGS, metadata_db="postgresql://localhost/scenara_model"))
 
     def unexpected_journal_mode() -> str:
         raise AssertionError("PostgreSQL health checks must not execute SQLite PRAGMA statements")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from vision_model_lab.packaging.model_package import create_model_package, validate_model_package
+from scenara_model.packaging.model_package import create_model_package, validate_model_package
 
 SAMPLE_JPEG_BYTES = bytes.fromhex("ffd8ffe000104a46494600010101000100010000ffd9")
 
@@ -18,7 +18,7 @@ def _write_identity_onnx(path: Path) -> None:
         [helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 1])],
         [helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 1])],
     )
-    model = helper.make_model(graph, producer_name="vision-model-lab-test", opset_imports=[helper.make_operatorsetid("", 17)])
+    model = helper.make_model(graph, producer_name="scenara-model-test", opset_imports=[helper.make_operatorsetid("", 17)])
     model.ir_version = 8
     onnx.save(model, path)
 

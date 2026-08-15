@@ -7,8 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from vision_model_lab.adapters.registry import run_stage
-from vision_model_lab.export.onnx_checks import check_onnx_loadable
+from scenara_model.adapters.registry import run_stage
+from scenara_model.export.onnx_checks import check_onnx_loadable
 
 
 def build_parser() -> argparse.ArgumentParser:
