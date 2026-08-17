@@ -7,7 +7,7 @@
 | `SCENARA_MODEL_WORKSPACE` | 当前工作目录 | 工作区根路径 |
 | `SCENARA_MODEL_METADATA_DB` | `artifacts/scenara_model.sqlite3` | SQLite 元数据路径或 PostgreSQL DSN；`:memory:` 仅供测试，重启即丢数据 |
 | `SCENARA_MODEL_CORS_ORIGINS` | `*` | API CORS 白名单，生产应显式配置 |
-| `SCENARA_MODEL_SERVE_FRONTEND` | `true` | 是否由 FastAPI 托管前端构建产物 |
+| `SCENARA_MODEL_SERVE_FRONTEND` | `false` | 是否由 FastAPI 托管迁移期独立前端构建产物 |
 | `SCENARA_MODEL_FRONTEND_DIST` | `frontend/dist` | 前端构建目录 |
 | `SCENARA_MODEL_MAX_PACKAGE_SCAN_FILES` | `500` | 模型包扫描上限 |
 | `SCENARA_MODEL_STORAGE_BACKEND` | `local` | 对象存储后端：`local`、`s3`、`minio` |
@@ -123,6 +123,14 @@ python -m pip check
 ```
 
 如果需要同时安装 Paddle、Torch、ONNX 优化器等重依赖，建议为训练框架另建环境，平台 API 环境只保留管理、校验和 ONNX Runtime 所需依赖。
+
+## 1.0.0-dev.1 发布门禁
+
+- Python 包、运行时 `__version__`、前端包版本和 lockfile 已统一为 `1.0.0-dev.1` / `1.0.0.dev1`，并由 `scripts/check_versions.py` 自动校验。
+- `start.py` 默认构建并启用迁移期本地管理台；`--backend-only` 保留 API-only 启动。
+- `npm ci` 和 `npm audit --json` 为 0 vulnerabilities；`npm run build` 通过，构建链为 Vite 8。
+- 针对启动提示、前端开关默认值和静态资源路径保护的 Python 测试通过；Ruff 与 Pyright 针对相关文件通过。
+- 完整说明见 `docs/RELEASE_1.0.0-dev.1.md`。
 ## 0.3.0 发布门禁
 
 - Python 包版本、运行时 `__version__`、前端包版本已统一为 `0.3.0`。

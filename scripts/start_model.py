@@ -50,6 +50,13 @@ def load_dotenv(path: Path) -> None:
             os.environ[name] = value
 
 
+def bool_env(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def ensure_env_file(root: Path) -> None:
     """.env 不入库；首次启动时自动从 .env.example 复制一份本地配置。"""
     env_file = root / ".env"
@@ -126,6 +133,18 @@ def ensure_frontend(root: Path, enabled: bool) -> None:
     run(command_for_executable(npm, "run", "build"), cwd=frontend)
 
 
+def frontend_dist(root: Path) -> Path:
+    configured = Path(os.environ.get("SCENARA_MODEL_FRONTEND_DIST", "frontend/dist"))
+    if configured.is_absolute():
+        return configured
+    return root / configured
+
+
+def frontend_build_available(root: Path) -> bool:
+    dist = frontend_dist(root)
+    return (dist / "index.html").is_file() and (dist / "assets").is_dir()
+
+
 def configure_environment(root: Path) -> None:
     ensure_env_file(root)
     load_dotenv(root / ".env")
@@ -138,10 +157,15 @@ def configure_environment(root: Path) -> None:
     (root / "artifacts" / "object-store").mkdir(parents=True, exist_ok=True)
 
 
-def start_api(root: Path, python_path: Path, host: str, port: int) -> int:
+def start_api(root: Path, python_path: Path, host: str, port: int, *, legacy_frontend_enabled: bool, legacy_frontend_available: bool) -> int:
     print("", flush=True)
     print("景枢模型平台正在启动...", flush=True)
-    print(f"管理台：    http://{host}:{port}/", flush=True)
+    if legacy_frontend_enabled and legacy_frontend_available:
+        print(f"迁移期管理台：http://{host}:{port}/", flush=True)
+    elif legacy_frontend_enabled:
+        print(f"迁移期管理台：未找到构建产物（{frontend_dist(root)}），根路径暂不可用。", flush=True)
+    else:
+        print("迁移期管理台：未启用（使用 --with-legacy-frontend 构建并托管）。", flush=True)
     print(f"接口文档：  http://{host}:{port}/docs", flush=True)
     print(f"健康检查：  http://{host}:{port}/health", flush=True)
     print("", flush=True)
@@ -177,6 +201,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.with_legacy_frontend:
         os.environ["SCENARA_MODEL_SERVE_FRONTEND"] = "true"
     ensure_frontend(root, args.with_legacy_frontend)
+    legacy_frontend_enabled = bool_env("SCENARA_MODEL_SERVE_FRONTEND", False)
+    legacy_frontend_available = frontend_build_available(root)
+    if legacy_frontend_enabled and not legacy_frontend_available:
+        os.environ["SCENARA_MODEL_SERVE_FRONTEND"] = "false"
 
     print("[准备] 正在初始化元数据存储...", flush=True)
     run(
@@ -192,7 +220,14 @@ def main(argv: list[str] | None = None) -> int:
         cwd=root,
     )
 
-    return start_api(root, python_path, args.host, args.port)
+    return start_api(
+        root,
+        python_path,
+        args.host,
+        args.port,
+        legacy_frontend_enabled=legacy_frontend_enabled,
+        legacy_frontend_available=legacy_frontend_available,
+    )
 
 
 if __name__ == "__main__":

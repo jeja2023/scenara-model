@@ -3,14 +3,15 @@
 ## 日常启动
 
 ```powershell
-python scripts/serve_api.py --host 127.0.0.1 --port 8080 --metadata-db artifacts/scenara_model.sqlite3
+python start.py
 ```
 
 访问：
 
-- 管理台：`http://127.0.0.1:8080/`
+- 迁移期管理台：`http://127.0.0.1:8080/`
 - OpenAPI：`http://127.0.0.1:8080/docs`
 - 健康检查：`http://127.0.0.1:8080/health`
+- 仅启动后端：`python start.py --backend-only`。
 
 ## 发布前检查
 
@@ -57,7 +58,7 @@ python scripts/runtime_check.py --base-url http://127.0.0.1:8080
 ## 故障处理
 
 - `/health` 不通：确认进程是否监听 8080，或换端口启动。
-- 前端空白：重新执行 `npm run build`，确认 `frontend/dist/assets` 存在，然后重启 API。
+- 根路径 404 或前端空白：优先使用 `python start.py` 重新一键启动；若手动启动后端，需要设置 `SCENARA_MODEL_SERVE_FRONTEND=true`，执行 `npm run build`，确认 `frontend/dist/assets` 存在，然后重启 API。
 - SQLite 写入失败：使用 `--metadata-db :memory:` 验证是否为磁盘权限问题，再切换到可写路径。
 - 多实例任务被意外回收：检查 `/health` 后端类型和 `pipeline_jobs.worker_id` / `heartbeat_at`，确认各实例时钟同步且心跳未超过 120 秒。
 - 日志增长过快：调整 `SCENARA_MODEL_LOG_RETENTION_DAYS`，并确认周期维护没有持续报错；设为 `0` 会禁用历史日志清理。

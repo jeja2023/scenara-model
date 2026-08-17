@@ -67,7 +67,7 @@ def load_settings() -> Settings:
         workspace_root=workspace_root,
         metadata_db=metadata_db,
         cors_origins=_list_env("SCENARA_MODEL_CORS_ORIGINS", ["*"]),
-        serve_frontend=_bool_env("SCENARA_MODEL_SERVE_FRONTEND", True),
+        serve_frontend=_bool_env("SCENARA_MODEL_SERVE_FRONTEND", False),
         frontend_dist=workspace_root / os.environ.get("SCENARA_MODEL_FRONTEND_DIST", "frontend/dist"),
         max_package_scan_files=_int_env("SCENARA_MODEL_MAX_PACKAGE_SCAN_FILES", 500),
         max_upload_bytes=_int_env("SCENARA_MODEL_MAX_UPLOAD_BYTES", 500 * 1024 * 1024),

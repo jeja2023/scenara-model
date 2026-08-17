@@ -1,6 +1,6 @@
 # Scenara Model
 
-当前版本：`1.0.0-dev.0`。完整变更见 [CHANGELOG.md](CHANGELOG.md)，迁移说明见 [docs/RELEASE_1.0.0-dev.0.md](docs/RELEASE_1.0.0-dev.0.md)。
+当前版本：`1.0.0-dev.1`。完整变更见 [CHANGELOG.md](CHANGELOG.md)，迁移说明见 [docs/RELEASE_1.0.0-dev.1.md](docs/RELEASE_1.0.0-dev.1.md)。
 
 `scenara-model` 是景枢模型平台的责任仓库，负责实验、训练任务、模型评估、模型版本、模型注册和不可变 Model Package 发布。训练数据只引用 `scenara-data` 发布的不可变 Dataset Version；生产准入、激活、流量切换和回滚由 `scenara` 负责。
 
@@ -12,7 +12,7 @@
 - 模型命名、模型卡、labels、样例、sha256 校验。
 - JSONL 数据 manifest 校验。
 - FastAPI 管理接口。
-- 迁移期 React/TypeScript 管理台源码，默认禁用并冻结新增业务；正式入口必须接入 `scenara` 统一 Console。
+- 迁移期 React/TypeScript 管理台源码，部署默认禁用并冻结新增业务；本地 `python start.py` 会为一键体验自动构建并托管，正式入口必须接入 `scenara` 统一 Console。
 - YOLO 检测、ReID、分类、分割的本地基线适配器；配置 `training.command`、`export.command`、`evaluation.command` 后会执行真实外部框架命令并记录日志。baseline 仅用于 smoke，生产包默认要求真实 checkpoint、ONNX、实测指标、样例和阈值。
 - 实验记录、流水线运行、任务日志、产物索引、模型包校验、Dataset Version 引用、模型注册和模型制品发布的元数据存储。
 - local/S3/MinIO 对象存储入口、上传接口和误差样本摘要。
@@ -26,21 +26,22 @@
 python start.py
 ```
 
-脚本会读取 `.env`（首次启动自动从 `.env.example` 复制），创建或复用 `.venv`，安装 Python 依赖，初始化元数据存储并启动领域 API。独立前端默认不构建、不启用；`start.py` 仅负责校验 Python 版本并调用 `scripts/start_model.py`。
+脚本会读取 `.env`（首次启动自动从 `.env.example` 复制），创建或复用 `.venv`，安装 Python 依赖，安装/构建迁移期前端，初始化元数据存储并启动后端 API。默认根路径会托管本地管理台；仅需后端时使用 `--backend-only`。
 
 常用参数：
 
 ```powershell
 python start.py --port 8080
 python start.py --skip-install
-python start.py --with-legacy-frontend
+python start.py --backend-only
 ```
 
 启动后访问：
 
+- 迁移期管理台：`http://127.0.0.1:8080/`
 - 接口文档：`http://127.0.0.1:8080/docs`
 - 健康检查：`http://127.0.0.1:8080/health`
-- 统一 Console：由 `scenara` 提供；仅使用 `--with-legacy-frontend` 时暴露迁移期页面。
+- 统一 Console：由 `scenara` 提供；迁移期本地管理台仅用于当前过渡阶段。
 
 ## 快速命令
 
@@ -109,9 +110,10 @@ defect_classifier_resnet50_v2.0.0_fp16.onnx
 
 启动后访问：
 
-- 管理台：`http://127.0.0.1:8080/`
-- OpenAPI：`http://127.0.0.1:8080/docs`
+- 迁移期管理台：`http://127.0.0.1:8080/`
+- 接口文档：`http://127.0.0.1:8080/docs`
 - 健康检查：`http://127.0.0.1:8080/health`
+- 统一 Console：由 `scenara` 提供；迁移期本地管理台仅用于当前过渡阶段。
 
 ## 近期工程化增强
 

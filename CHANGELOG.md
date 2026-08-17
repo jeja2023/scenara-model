@@ -4,6 +4,28 @@
 
 ## [Unreleased]
 
+## [1.0.0-dev.1] - 2026-08-17
+
+### Changed
+
+- `start.py` 现在默认执行本地一键启动：准备 Python 环境、安装依赖、初始化元数据、构建迁移期前端并由后端托管根路径；仅需后端时使用 `--backend-only`。
+- 前端构建链升级到 `vite@8.2.1` 与 `@vitejs/plugin-react@6.0.5`，并声明 Node 版本要求 `^20.19.0 || >=22.12.0`。
+
+### Fixed
+
+- 一键启动脚本不再在迁移期独立前端未启用或构建产物缺失时打印会返回 404 的根路径管理台入口，并将 `SCENARA_MODEL_SERVE_FRONTEND` 的代码默认值与 `.env.example` 保持一致。
+- 清理前端 `npm audit` 报告中的 Vite、esbuild、PostCSS、nanoid 相关安全告警；当前 `npm ci` 和 `npm audit --json` 均为 0 vulnerabilities。
+
+### Verified
+
+- `python scripts/check_versions.py`
+- `npm ci`
+- `npm audit --json`
+- `npm run build`
+- `python -m pytest tests/test_start_entry.py tests/test_start_model.py tests/test_settings.py tests/test_api.py::test_frontend_fallback_does_not_serve_workspace_files`
+- `python -m ruff check start.py scripts/start_model.py src/scenara_model/settings.py tests/test_start_entry.py tests/test_start_model.py tests/test_settings.py`
+- `python -m pyright start.py scripts/start_model.py src/scenara_model/settings.py tests/test_start_entry.py tests/test_start_model.py tests/test_settings.py`
+
 ## [1.0.0-dev.0] - 2026-08-15
 
 ### Changed

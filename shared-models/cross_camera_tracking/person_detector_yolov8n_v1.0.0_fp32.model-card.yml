@@ -5,7 +5,7 @@ model:
   architecture: yolov8n
   precision: fp32
   format: onnx
-  sha256: 80595341f3209a5b1cd18f771a767ba2c4d650ece31bfebb3c7d859d2d7982c7
+  sha256: 93eb500ff0ba2bb1ad41b7b060076ac39c1de07f99639d535b18f954f14124b6
 dataset:
   train: person_detection_dataset_v1.0.0
   val: person_detection_dataset_v1.0.0
@@ -40,8 +40,8 @@ provenance:
   profile: smoke
   experiment_id: person_detector_20260603_001
   config_path: configs/experiments/detection_yolo_baseline.yml
-  config_sha256: 9e8a35a326f33ead4c8dcd54904e83a516d12a8622876fd7272ac2f361c1dc04
-  code_revision: bff107346c708853401a6feb140e67687b95f07a
+  config_sha256: 2c384d60f5fbfae22081d803dda3293222b4e1f72570f321c1ca1e780207dec9
+  code_revision: 5ce55660d417acc7f7440ad66208ab19d44e9047
   training:
     adapter: detection_yolo_baseline
     command: null
