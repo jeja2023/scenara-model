@@ -228,6 +228,29 @@ def validate_model_card(
                 value = str(dataset.get(split) or "")
                 if not value or value in {"dataset_v0.0.0", "dataset_test_v0.0.0"}:
                     issues.append(ModelCardIssue("model_card.placeholder_dataset", f"dataset.{split} must identify a real dataset version", f"dataset.{split}"))
+            reference = dataset.get("reference")
+            if not isinstance(reference, dict):
+                issues.append(ModelCardIssue("model_card.missing_dataset_reference", "dataset.reference is required for a production model package", "dataset.reference"))
+            else:
+                required_reference_fields = {
+                    "dataset_id",
+                    "version",
+                    "manifest_uri",
+                    "manifest_sha256",
+                    "lineage_refs",
+                    "authorization_id",
+                    "authorized_consumer_repository_ids",
+                    "created_at",
+                }
+                missing = sorted(field for field in required_reference_fields if field not in reference)
+                for field_name in missing:
+                    issues.append(
+                        ModelCardIssue(
+                            "model_card.missing_dataset_reference_field",
+                            f"dataset.reference.{field_name} is required",
+                            f"dataset.reference.{field_name}",
+                        )
+                    )
         if isinstance(limitations, list) and any("fill in" in str(item).lower() for item in limitations):
             issues.append(ModelCardIssue("model_card.placeholder_limitations", "limitations must not contain release placeholders", "limitations"))
 

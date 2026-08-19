@@ -25,6 +25,7 @@ from scenara_model import __version__
 from scenara_model.adapters.registry import list_adapters
 from scenara_model.auth import generate_session_token, hash_password, token_digest, verify_password
 from scenara_model.contracts import validate_models_fragment, validate_release_decision
+from scenara_model.dataset_versions import DatasetVersionReference, validate_dataset_version_reference
 from scenara_model.datasets.manifest import validate_manifest
 from scenara_model.naming import parse_artifact_name
 from scenara_model.object_store import object_store_from_settings
@@ -290,10 +291,11 @@ class ErrorAnalysisRequest(ApiModel):
 
 
 class DatasetVersionRegisterRequest(ApiModel):
-    name: str
-    version: str
-    task: str
+    reference: DatasetVersionReference | None = None
     manifest_path: str
+    name: str | None = None
+    version: str | None = None
+    task: str | None = None
     dataset_id: str | None = None
     labels: list[str] = Field(default_factory=list)
     allowed_labels: list[str] = Field(default_factory=list)
@@ -892,6 +894,27 @@ def list_dataset_versions(limit: int = Query(default=100, ge=1, le=500)) -> dict
 @app.post("/api/datasets/versions", dependencies=[Depends(require_auth)])
 def register_dataset_version(request: DatasetVersionRegisterRequest) -> dict[str, Any]:
     manifest_path = workspace_path(request.manifest_path)
+    reference = request.reference
+    if reference is not None:
+        try:
+            reference = validate_dataset_version_reference(reference, manifest_path=manifest_path)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        dataset_id = reference.dataset_id
+        name = reference.dataset_id
+        version = reference.version
+        task = request.task or "unknown"
+        status = "published"
+        reference_payload = reference.model_dump(mode="json")
+    else:
+        if not request.name or not request.version or not request.task:
+            raise HTTPException(status_code=400, detail="reference or legacy name/version/task fields are required")
+        dataset_id = request.dataset_id or f"{request.name}_v{request.version}"
+        name = request.name
+        version = request.version
+        task = request.task
+        status = request.status
+        reference_payload = {}
     validation = validate_manifest(
         manifest_path,
         min_split_counts=request.min_split_counts or None,
@@ -900,20 +923,28 @@ def register_dataset_version(request: DatasetVersionRegisterRequest) -> dict[str
     )
     if not validation.ok:
         raise HTTPException(status_code=400, detail={"manifest": validation.to_dict()})
-    dataset_id = request.dataset_id or f"{request.name}_v{request.version}"
     dataset = STORE.upsert_dataset_version(
         {
             "dataset_id": dataset_id,
-            "name": request.name,
-            "version": request.version,
-            "task": request.task,
+            "name": name,
+            "version": version,
+            "task": task,
             "manifest_path": workspace_relative(manifest_path),
             "split_counts": validation.split_counts,
             "labels": request.labels,
-            "status": request.status,
+            "status": status,
+            "reference": reference_payload,
         }
     )
-    STORE.record_audit_event(actor="api", action="dataset.register", target=dataset_id, detail={"rows": validation.total_rows})
+    STORE.record_audit_event(
+        actor="api",
+        action="dataset.register",
+        target=dataset_id,
+        detail={
+            "rows": validation.total_rows,
+            "manifest_sha256": reference.manifest_sha256 if reference is not None else None,
+        },
+    )
     return {"dataset": dataset, "manifest": validation.to_dict()}
 
 

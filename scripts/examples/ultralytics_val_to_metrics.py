@@ -19,7 +19,7 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        from ultralytics import YOLO
+        from ultralytics import YOLO  # pyright: ignore[reportMissingImports]
     except ImportError:
         print("ultralytics is not installed in this environment", file=sys.stderr)
         return 2

@@ -68,6 +68,7 @@ def test_metadata_store_job_logs_artifacts_and_mlops_records() -> None:
             "manifest_path": "data/train.jsonl",
             "split_counts": {"train": 10},
             "labels": ["person"],
+            "reference": {"dataset_id": "people_v1.0.0", "version": "1.0.0"},
         }
     )
     model = store.upsert_model_registry_entry(
@@ -93,6 +94,7 @@ def test_metadata_store_job_logs_artifacts_and_mlops_records() -> None:
     assert store.list_pipeline_job_logs(int(job["id"]))[0]["id"] == log["id"]
     assert store.list_pipeline_artifacts(job_id=int(job["id"]))[0]["id"] == artifact["id"]
     assert dataset["split_counts"] == {"train": 10}
+    assert dataset["reference"] == {"dataset_id": "people_v1.0.0", "version": "1.0.0"}
     assert model["metrics"] == {"map50": 0.5}
     assert approval["status"] == "approved"
     assert rollout["traffic_percent"] == 10

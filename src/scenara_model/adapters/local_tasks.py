@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from scenara_model.adapters.base import AdapterResult
+from scenara_model.dataset_versions import reference_validation_issues
 from scenara_model.datasets.manifest import validate_manifest
 from scenara_model.export.onnx_checks import check_onnx_loadable
 from scenara_model.utils import ensure_dir, read_yaml, sha256_file, write_json
@@ -436,6 +437,9 @@ def _training_manifest_issues(config: dict[str, Any]) -> list[str]:
     if not isinstance(dataset, dict):
         return ["dataset must be an object"]
     issues: list[str] = []
+    package = config.get("package")
+    if isinstance(package, dict) and str(package.get("profile") or "production").strip().lower() == "production":
+        issues.extend(reference_validation_issues(config, _workspace_root()))
     for split, key in (("train", "train_manifest"), ("val", "val_manifest")):
         value = dataset.get(key)
         if not value:

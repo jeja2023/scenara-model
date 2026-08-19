@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = "20260726_060_job_heartbeat"
+SCHEMA_VERSION = "20260818_070_dataset_version_reference"
 
 # 流水线任务终态：一旦进入不可回退。
 TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
@@ -173,6 +173,7 @@ class MetadataStore:
                 manifest_path TEXT NOT NULL,
                 split_counts_json TEXT NOT NULL DEFAULT '{}',
                 labels_json TEXT NOT NULL DEFAULT '[]',
+                reference_json TEXT NOT NULL DEFAULT '{}',
                 status TEXT NOT NULL DEFAULT 'registered',
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
                 updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -250,6 +251,7 @@ class MetadataStore:
             """
         )
         self._ensure_pipeline_job_columns(connection)
+        self._ensure_dataset_version_columns(connection)
         connection.execute("CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON auth_sessions(expires_at)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_status ON pipeline_jobs(status)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at)")
@@ -266,6 +268,11 @@ class MetadataStore:
         for column in ("worker_id", "heartbeat_at"):
             if column not in existing:
                 connection.execute(f"ALTER TABLE pipeline_jobs ADD COLUMN {column} TEXT")
+
+    def _ensure_dataset_version_columns(self, connection: Any) -> None:
+        existing = {row[1] for row in connection.execute("PRAGMA table_info(dataset_versions)").fetchall()}
+        if "reference_json" not in existing:
+            connection.execute("ALTER TABLE dataset_versions ADD COLUMN reference_json TEXT NOT NULL DEFAULT '{}'")
 
     def _configure_connection(self, connection: sqlite3.Connection, *, in_memory: bool, use_wal: bool = True) -> None:
         connection.row_factory = sqlite3.Row
@@ -851,6 +858,7 @@ class MetadataStore:
             "manifest_path": payload["manifest_path"],
             "split_counts_json": json.dumps(split_counts, ensure_ascii=False),
             "labels_json": json.dumps(labels, ensure_ascii=False),
+            "reference_json": json.dumps(payload.get("reference") or {}, ensure_ascii=False),
             "status": payload.get("status", "registered"),
             "updated_at": utc_now_iso(),
         }
@@ -858,9 +866,9 @@ class MetadataStore:
             connection.execute(
                 """
                 INSERT INTO dataset_versions
-                    (dataset_id, name, version, task, manifest_path, split_counts_json, labels_json, status)
+                    (dataset_id, name, version, task, manifest_path, split_counts_json, labels_json, reference_json, status)
                 VALUES
-                    (:dataset_id, :name, :version, :task, :manifest_path, :split_counts_json, :labels_json, :status)
+                    (:dataset_id, :name, :version, :task, :manifest_path, :split_counts_json, :labels_json, :reference_json, :status)
                 ON CONFLICT(dataset_id) DO UPDATE SET
                     name=excluded.name,
                     version=excluded.version,
@@ -868,6 +876,7 @@ class MetadataStore:
                     manifest_path=excluded.manifest_path,
                     split_counts_json=excluded.split_counts_json,
                     labels_json=excluded.labels_json,
+                    reference_json=excluded.reference_json,
                     status=excluded.status,
                     updated_at=:updated_at
                 """,
@@ -1141,6 +1150,7 @@ class MetadataStore:
         record = dict(row)
         record["split_counts"] = json.loads(record.pop("split_counts_json") or "{}")
         record["labels"] = json.loads(record.pop("labels_json") or "[]")
+        record["reference"] = json.loads(record.pop("reference_json") or "{}")
         return record
 
     @staticmethod
@@ -1272,8 +1282,8 @@ class PostgresMetadataStore(MetadataStore):
     @contextmanager
     def connect(self) -> Iterator[Any]:
         try:
-            import psycopg
-            from psycopg.rows import dict_row
+            import psycopg  # pyright: ignore[reportMissingImports]
+            from psycopg.rows import dict_row  # pyright: ignore[reportMissingImports]
         except ImportError as exc:  # pragma: no cover - optional deployment extra
             raise RuntimeError("psycopg is required for PostgreSQL metadata storage; install scenara-model[postgres].") from exc
         pool = self._ensure_pool()
@@ -1399,6 +1409,7 @@ class PostgresMetadataStore(MetadataStore):
                 manifest_path TEXT NOT NULL,
                 split_counts_json TEXT NOT NULL DEFAULT '{}',
                 labels_json TEXT NOT NULL DEFAULT '[]',
+                reference_json TEXT NOT NULL DEFAULT '{}',
                 status TEXT NOT NULL DEFAULT 'registered',
                 created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -1467,6 +1478,7 @@ class PostgresMetadataStore(MetadataStore):
         ):
             connection.execute(table_sql)
         self._ensure_pipeline_job_columns(connection)
+        self._ensure_dataset_version_columns(connection)
         connection.execute("CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON auth_sessions(expires_at)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_status ON pipeline_jobs(status)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at)")
@@ -1484,6 +1496,9 @@ class PostgresMetadataStore(MetadataStore):
     def _ensure_pipeline_job_columns(self, connection: Any) -> None:
         connection.execute("ALTER TABLE pipeline_jobs ADD COLUMN IF NOT EXISTS worker_id TEXT")
         connection.execute("ALTER TABLE pipeline_jobs ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ")
+
+    def _ensure_dataset_version_columns(self, connection: Any) -> None:
+        connection.execute("ALTER TABLE dataset_versions ADD COLUMN IF NOT EXISTS reference_json TEXT NOT NULL DEFAULT '{}'")
 
 
 def metadata_store_from_uri(uri: str | Path = ":memory:") -> MetadataStore:

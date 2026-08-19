@@ -28,7 +28,7 @@ def main() -> int:
 
     if args.require_cuda:
         try:
-            import torch
+            import torch  # pyright: ignore[reportMissingImports]
 
             available = bool(torch.cuda.is_available())
             device_count = int(torch.cuda.device_count()) if available else 0

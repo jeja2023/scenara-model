@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from scenara_model.dataset_versions import reference_from_config, reference_validation_issues
 from scenara_model.datasets.manifest import validate_manifest
 from scenara_model.naming import parse_artifact_name
 from scenara_model.utils import read_json, sha256_file
@@ -150,6 +151,7 @@ def validate_package_trust(
     if not isinstance(limitations, list) or not limitations or any("fill in" in str(item).lower() for item in limitations):
         issues.append("package.limitations must contain real known limitations")
     issues.extend(_manifest_issues(config, Path(workspace).resolve()))
+    issues.extend(reference_validation_issues(config, Path(workspace).resolve()))
     return PackageTrust(profile=profile, issues=issues)
 
 
@@ -180,6 +182,7 @@ def build_model_card_data(
     dataset_name = str(dataset.get("name") or "dataset")
     dataset_version = str(dataset.get("version") or "0.0.0")
     dataset_id = f"{dataset_name}_v{dataset_version}"
+    reference = reference_from_config(config)
     metrics = stages.get("evaluation", {}).get("metrics", {})
     metrics = dict(metrics) if isinstance(metrics, dict) else {}
     training = stages.get("training", {})
@@ -239,6 +242,7 @@ def build_model_card_data(
             "train": str(dataset.get("train_id") or dataset_id),
             "val": str(dataset.get("val_id") or dataset_id),
             "test": str(dataset.get("test_id") or dataset_id),
+            "reference": reference.model_dump(mode="json") if reference is not None else None,
         },
         "input": {
             "layout": str(input_section.get("layout") or "nchw").lower(),

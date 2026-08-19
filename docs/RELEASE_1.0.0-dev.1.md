@@ -42,5 +42,5 @@ python start.py --backend-only
 ## 仍未完成
 
 - Core 统一身份、权限、审计和 Console 接入。
-- Dataset Version 正式消费方契约测试。
+- Dataset Version 正式消费方契约测试已补齐；生产训练现在强制校验 `dataset-version-input` 引用与本地 manifest 摘要一致。
 - Model Package 到 Core 准入、加载、激活和回滚的跨仓库端到端测试。

@@ -334,9 +334,16 @@ def test_mlops_registry_release_and_rollout_endpoints() -> None:
     dataset_response = client.post(
         "/api/datasets/versions",
         json={
-            "name": "person_detection_dataset",
-            "version": "1.0.0",
-            "task": "detection",
+            "reference": {
+                "dataset_id": "person_detection_dataset_v1.0.0",
+                "version": "1.0.0",
+                "manifest_uri": "s3://bucket/person_detection_dataset_v1.0.0.jsonl#sha256=fa59b0e0d726342fd5d24ef2b18cdcd9df3d8e8ac2dc3c28d4051fb5f62b2366",
+                "manifest_sha256": "fa59b0e0d726342fd5d24ef2b18cdcd9df3d8e8ac2dc3c28d4051fb5f62b2366",
+                "lineage_refs": ["https://data.example/lineage/person_detection_dataset_v1.0.0.json#sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+                "authorization_id": "grant_person_detection_dataset_v1.0.0",
+                "authorized_consumer_repository_ids": ["scenara-model"],
+                "created_at": "2026-08-18T00:00:00Z",
+            },
             "manifest_path": "data/manifests/example_train_v1.jsonl",
             "labels": ["person"],
             "min_split_counts": {"train": 1, "val": 1},
@@ -384,3 +391,32 @@ def test_mlops_registry_release_and_rollout_endpoints() -> None:
     assert client.get("/api/models/registry").json()["models"]
     assert client.get("/api/releases/approvals").json()["approvals"] == []
     assert client.get("/api/deployments/rollouts").json()["rollouts"] == []
+
+
+def test_dataset_version_registration_persists_formal_reference() -> None:
+    client = _client()
+
+    response = client.post(
+        "/api/datasets/versions",
+        json={
+            "reference": {
+                "dataset_id": "person_detection_dataset_v1.0.0",
+                "version": "1.0.0",
+                "manifest_uri": "s3://bucket/person_detection_dataset_v1.0.0.jsonl#sha256=fa59b0e0d726342fd5d24ef2b18cdcd9df3d8e8ac2dc3c28d4051fb5f62b2366",
+                "manifest_sha256": "fa59b0e0d726342fd5d24ef2b18cdcd9df3d8e8ac2dc3c28d4051fb5f62b2366",
+                "lineage_refs": ["https://data.example/lineage/person_detection_dataset_v1.0.0.json#sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+                "authorization_id": "grant_person_detection_dataset_v1.0.0",
+                "authorized_consumer_repository_ids": ["scenara-model"],
+                "created_at": "2026-08-18T00:00:00Z",
+            },
+            "manifest_path": "data/manifests/example_train_v1.jsonl",
+            "labels": ["person"],
+            "min_split_counts": {"train": 1, "val": 1},
+        },
+    )
+
+    assert response.status_code == 200
+    dataset = response.json()["dataset"]
+    assert dataset["dataset_id"] == "person_detection_dataset_v1.0.0"
+    assert dataset["status"] == "published"
+    assert dataset["reference"]["authorization_id"] == "grant_person_detection_dataset_v1.0.0"

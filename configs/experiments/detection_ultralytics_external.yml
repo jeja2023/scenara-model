@@ -11,10 +11,24 @@ experiment:
 
 dataset:
   name: person_detection_dataset
+  dataset_id: person_detection_dataset_v1.0.0
   version: 1.0.0
   train_manifest: data/manifests/person_detection_train_v1.jsonl
   val_manifest: data/manifests/person_detection_val_v1.jsonl
   test_manifest: data/manifests/person_detection_test_v1.jsonl
+  reference_manifest_path: data/manifests/person_detection_train_v1.jsonl
+  reference:
+    schema_version: "1.0"
+    dataset_id: person_detection_dataset_v1.0.0
+    version: 1.0.0
+    manifest_uri: s3://bucket/person_detection_dataset_v1.0.0.jsonl#sha256=replace-with-real-manifest-sha256
+    manifest_sha256: replace-with-real-manifest-sha256
+    lineage_refs:
+      - https://data.example/lineage/person_detection_dataset_v1.0.0.json#sha256=replace-with-real-lineage-sha256
+    authorization_id: grant_person_detection_dataset_v1.0.0
+    authorized_consumer_repository_ids:
+      - scenara-model
+    created_at: 2026-08-18T00:00:00Z
 
 model:
   architecture: yolov8n

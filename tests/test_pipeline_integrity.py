@@ -24,6 +24,20 @@ def _base_config(workspace_tmp_path: Path, experiment_id: str) -> dict:
     }
 
 
+def _dataset_reference(manifest_path: Path, dataset_id: str = "quality_dataset_v1.0.0") -> dict:
+    return {
+        "schema_version": "1.0",
+        "dataset_id": dataset_id,
+        "version": "1.0.0",
+        "manifest_uri": f"s3://bucket/{dataset_id}.jsonl#sha256={sha256_file(manifest_path)}",
+        "manifest_sha256": sha256_file(manifest_path),
+        "lineage_refs": ["https://data.example/lineage/source.json#sha256=" + "a" * 64],
+        "authorization_id": f"grant_{dataset_id}",
+        "authorized_consumer_repository_ids": ["scenara-model"],
+        "created_at": "2026-08-18T00:00:00Z",
+    }
+
+
 def _make_real_onnx_script(target: Path, shape: list[int] | None = None) -> list[str]:
     """构造一个外部命令：产出与合成桩结构不同的真实 ONNX（含 Add 节点）。"""
     input_shape = shape or [1, 4]
@@ -63,10 +77,13 @@ def test_production_package_requires_real_evidence_and_writes_provenance(workspa
         "experiment": {"id": "production_evidence", "task": "classification", "project": "quality"},
         "dataset": {
             "name": "quality_dataset",
+            "dataset_id": "quality_dataset_v1.0.0",
             "version": "1.0.0",
             "train_manifest": str(workspace_tmp_path / "train.jsonl"),
             "val_manifest": str(workspace_tmp_path / "val.jsonl"),
             "test_manifest": str(workspace_tmp_path / "test.jsonl"),
+            "reference_manifest_path": str(workspace_tmp_path / "train.jsonl"),
+            "reference": _dataset_reference(workspace_tmp_path / "train.jsonl"),
         },
         "model": {"architecture": "resnet50", "version": "1.0.0", "input_size": [224, 224]},
         "labels": ["negative", "positive"],
@@ -107,6 +124,7 @@ def test_production_package_requires_real_evidence_and_writes_provenance(workspa
     assert card["provenance"]["export"]["onnx_source"] == "external_command"
     assert card["provenance"]["evaluation"]["metrics_source"] == "measured"
     assert card["provenance"]["training"]["checkpoint"]["sha256"]
+    assert card["dataset"]["reference"]["dataset_id"] == "quality_dataset_v1.0.0"
 
 
 def test_production_package_rejects_synthetic_baseline(workspace_tmp_path: Path) -> None:
@@ -126,6 +144,37 @@ def test_production_package_rejects_synthetic_baseline(workspace_tmp_path: Path)
     assert report["status"] == "failed"
     assert report["failed_stage"] == "package"
     assert "production training must execute" in report["failed_reason"]
+
+
+def test_production_package_requires_formal_dataset_reference(workspace_tmp_path: Path) -> None:
+    config = workspace_tmp_path / "config.yml"
+    payload = _base_config(workspace_tmp_path, "production_requires_reference")
+    for split in ("train", "val", "test"):
+        manifest = workspace_tmp_path / f"{split}.jsonl"
+        manifest.write_text(
+            f'{{"image":"s3://bucket/{split}.jpg","split":"{split}","source":"camera_01","dataset_version":"1.0.0"}}\n',
+            encoding="utf-8",
+        )
+    payload["dataset"] = {
+        "name": "dataset",
+        "version": "1.0.0",
+        "train_manifest": str(workspace_tmp_path / "train.jsonl"),
+        "val_manifest": str(workspace_tmp_path / "val.jsonl"),
+        "test_manifest": str(workspace_tmp_path / "test.jsonl"),
+    }
+    payload["package"] = {
+        "profile": "production",
+        "metric_thresholds": {"accuracy": 0.8},
+        "examples_dir": str(workspace_tmp_path),
+        "limitations": ["fixture"],
+    }
+    write_yaml(config, payload)
+
+    report = run_experiment_pipeline(config, package=True, output_root=workspace_tmp_path / "packages")
+
+    assert report["status"] == "failed"
+    assert report["failed_stage"] == "package"
+    assert "dataset.reference is required for production training" in report["failed_reason"]
 
 
 def test_production_training_rejects_stale_checkpoint(workspace_tmp_path: Path) -> None:
