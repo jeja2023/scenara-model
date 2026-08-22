@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scenara-model"
-version = "1.0.0.dev1"
+version = "1.0.0.dev2"
 description = "Scenara model training, evaluation, registry, and immutable model package tooling."
 requires-python = ">=3.11"
 dependencies = [
@@ -48,6 +48,8 @@ where = ["src"]
 
 [tool.pyright]
 extraPaths = ["src", "scripts"]
+venvPath = "."
+venv = ".venv"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

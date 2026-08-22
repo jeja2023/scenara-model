@@ -1,10 +1,12 @@
 # Scenara Model
 
-当前版本：`1.0.0-dev.1`。完整变更见 [CHANGELOG.md](CHANGELOG.md)，迁移说明见 [docs/RELEASE_1.0.0-dev.1.md](docs/RELEASE_1.0.0-dev.1.md)。
+当前版本：`1.0.0-dev.2`。完整变更见 [CHANGELOG.md](CHANGELOG.md)，迁移说明见 [docs/RELEASE_1.0.0-dev.2.md](docs/RELEASE_1.0.0-dev.2.md)。
 
 `scenara-model` 是景枢模型平台的责任仓库，负责实验、训练任务、模型评估、模型版本、模型注册和不可变 Model Package 发布。训练数据只引用 `scenara-data` 发布的不可变 Dataset Version；生产准入、激活、流量切换和回滚由 `scenara` 负责。
 
 当前成熟度为 `seed`。仓库由 `vision-model-lab` 迁移而来，已有训练与制品能力可以继续验证，但共享 IAM、统一 Console 和正式跨仓库契约接入尚未完成，因此不得标记为 `production_ready`。责任团队为 Scenara Model，迁移门禁和临时例外见 [ADR-0001](docs/adr/0001-repository-rename-and-control-plane-transition.md)。
+
+当前未完成项和验收顺序见 [剩余任务计划](docs/REMAINING_TASK_PLAN.md)。
 
 ## 当前能力
 

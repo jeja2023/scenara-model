@@ -4,9 +4,23 @@
 
 ## [Unreleased]
 
-- 同步 `@scenara/repository-contracts` `1.0.0` 的当前 Manifest SHA-256，`DatasetVersionReference.created_at` 按发布契约使用以 `Z` 结尾的 UTC RFC3339 字符串。
+- 同步 `@scenara/repository-contracts` `1.0.1` 的当前 Manifest SHA-256，`DatasetVersionReference.created_at` 按发布契约使用以 `Z` 结尾的 UTC RFC3339 字符串。
 - 模型平台在 Dataset Version 注册和生产模型卡校验路径拒绝 Unix 数值时间，内部存储和训练运行日志继续使用既有 UTC 字符串时间表示。
 - 补充开发规范中的跨仓时间约束，明确数据集版本消费方不得自行保留或转换数值时间兼容分支。
+
+## [1.0.0-dev.2] - 2026-08-22
+
+### Changed
+
+- 完成四仓库《景枢平台总体开发规范》符合性复核，并补充 `docs/REMAINING_TASK_PLAN.md`，明确 Model 的共享 IAM、Console、真实评估和生产准入剩余门禁。
+- 同步 `Dataset Version`、`Hard Sample` 和 `Model Package` 的契约消费说明，保留发布契约的 fail-closed 校验边界。
+- 增加 Pyright 虚拟环境与源码路径配置，保证本地类型检查与仓库实际 `.venv` 一致。
+- 将 Python 包、运行时版本、前端包和 lockfile 统一到 `1.0.0-dev.2` / `1.0.0.dev2`。
+
+### Verified
+
+- `100 passed`；`scripts/acceptance_check.py --skip-pytest` 通过；Pyright `0 errors, 0 warnings`。
+- 真实 FastReID 固定评估、部署反馈闭环、IAM/Console、授权和外部基础设施证据仍按生产门禁保持未完成状态。
 
 ## [1.0.0-dev.1] - 2026-08-17
 

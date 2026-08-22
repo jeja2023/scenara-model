@@ -124,6 +124,14 @@ python -m pip check
 
 如果需要同时安装 Paddle、Torch、ONNX 优化器等重依赖，建议为训练框架另建环境，平台 API 环境只保留管理、校验和 ONNX Runtime 所需依赖。
 
+## 1.0.0-dev.2 发布门禁
+
+- Python 包、运行时 `__version__`、前端包版本和 lockfile 已统一为 `1.0.0-dev.2` / `1.0.0.dev2`，并由 `scripts/check_versions.py` 自动校验。
+- 四仓库规范审计、剩余任务计划和契约消费说明已落档；Dataset Version、Hard Sample 和 Model Package 的边界继续 fail-closed。
+- `.venv\Scripts\python.exe -m pytest` 为 `100 passed`；`python scripts\acceptance_check.py --skip-pytest` 通过；Pyright 为 `0 errors, 0 warnings`。
+- 真实 FastReID 固定评估、部署反馈闭环、IAM/Console 集成、授权审计和生产基础设施资格仍未通过，因此当前成熟度仍为 `seed`。
+- 完整说明见 `docs/RELEASE_1.0.0-dev.2.md`。
+
 ## 1.0.0-dev.1 发布门禁
 
 - Python 包、运行时 `__version__`、前端包版本和 lockfile 已统一为 `1.0.0-dev.1` / `1.0.0.dev1`，并由 `scripts/check_versions.py` 自动校验。
