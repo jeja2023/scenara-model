@@ -1,4 +1,4 @@
-﻿__pycache__/
+__pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
@@ -16,7 +16,7 @@ frontend/.vite/
 .DS_Store
 Thumbs.db
 
-# Large or generated model/data artifacts
+# 大型或生成的模型/数据制品
 /datasets/
 shared-models/**/*.onnx
 shared-models/**/*.pt
@@ -34,11 +34,11 @@ artifacts/*.log
 artifacts/test_runs/
 experiments/local_runs/
 
-# Keep lightweight descriptors in Git
+# 在 Git 中保留轻量描述文件
 !artifacts/packages/.gitkeep
 !experiments/local_runs/.gitkeep
 
-# Local environment and build metadata
+# 本地环境与构建元数据
 .env
 *.egg-info/
 *.sqlite3
@@ -46,9 +46,8 @@ experiments/local_runs/
 *.sqlite3-wal
 *.sqlite3-shm
 
-# Runtime artifacts are regenerated locally
+# 运行时产物由本地重新生成
 artifacts/**
 !artifacts/
 !artifacts/packages/
 !artifacts/packages/.gitkeep
-

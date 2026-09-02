@@ -1,4 +1,4 @@
-# Deployment-owned dataset layout. Populate data/datasets/person_detection before training.
+# 部署侧管理的数据集布局。训练前请先准备好 data/datasets/person_detection。
 path: data/datasets/person_detection
 train: images/train
 val: images/val

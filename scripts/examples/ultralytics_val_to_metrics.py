@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run Ultralytics val and emit a metrics JSON file")
+    parser = argparse.ArgumentParser(description="?? Ultralytics ??????? JSON ??")
     parser.add_argument("--weights", required=True)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--data", default=None, help="Ultralytics data YAML（缺省时沿用模型训练配置）")

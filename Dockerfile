@@ -1,6 +1,6 @@
 ARG NODE_IMAGE=node:22-alpine
 ARG PYTHON_IMAGE=python:3.12-slim
-# Build with --build-arg SCENARA_MODEL_EXTRAS=postgres,s3 when those backends are needed.
+# 需要这些后端时，通过 --build-arg SCENARA_MODEL_EXTRAS=postgres,s3 进行构建。
 ARG SCENARA_MODEL_EXTRAS=""
 
 FROM ${NODE_IMAGE} AS frontend
@@ -24,8 +24,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install third-party dependencies from a placeholder package so source-only changes
-# keep this Docker layer cached.
+# 使用占位包先安装第三方依赖，使仅源码变更时能够复用该 Docker 缓存层。
 COPY pyproject.toml README.md constraints.txt ./
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && mkdir -p src/scenara_model \

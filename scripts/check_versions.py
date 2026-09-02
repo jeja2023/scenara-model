@@ -1,4 +1,4 @@
-"""Verify that all published version declarations remain synchronized."""
+"""校验所有发布的版本声明保持同步。"""
 from __future__ import annotations
 
 import json
@@ -37,11 +37,12 @@ def main() -> int:
         if root_entry.get("version") != expected_semver:
             problems.append(f'frontend/package-lock.json packages[""] = {root_entry.get("version")}')
 
-    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    changelog_file = ROOT / "更新日志.md" if (ROOT / "更新日志.md").exists() else ROOT / "CHANGELOG.md"
+    changelog = changelog_file.read_text(encoding="utf-8")
     changelog_versions = re.findall(r"^## \[([^\]]+)\]", changelog, re.MULTILINE)
     latest_published = next((version for version in changelog_versions if version.lower() != "unreleased"), None)
     if latest_published != expected_semver:
-        problems.append(f"CHANGELOG.md latest published = {latest_published or 'missing'}")
+        problems.append(f"{changelog_file.name} latest published = {latest_published or 'missing'}")
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     if f"当前版本：`{expected_semver}`" not in readme:

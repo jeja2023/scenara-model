@@ -12,7 +12,7 @@ from scenara_model.export.onnx_checks import check_onnx_loadable
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="ONNX export entry point")
+    parser = argparse.ArgumentParser(description="ONNX ????")
     parser.add_argument("--config", type=Path, default=Path("configs/export/onnx_export.yml"))
     parser.add_argument("--validate-only", type=Path, help="Validate an existing ONNX file")
     return parser

@@ -225,19 +225,19 @@ def _cmd_user_set_password(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="scenara-model", description="Scenara Model delivery tooling")
+    parser = argparse.ArgumentParser(prog="scenara-model", description="Scenara Model ????")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    hash_parser = subparsers.add_parser("hash", help="Calculate a file sha256 digest")
+    hash_parser = subparsers.add_parser("hash", help="????? sha256 ??")
     hash_parser.add_argument("path", type=Path)
     hash_parser.set_defaults(func=_cmd_hash)
 
-    package_parser = subparsers.add_parser("package", help="Model package operations")
+    package_parser = subparsers.add_parser("package", help="?????")
     package_subparsers = package_parser.add_subparsers(dest="package_command", required=True)
 
-    validate_parser = package_subparsers.add_parser("validate", help="Validate a model package")
+    validate_parser = package_subparsers.add_parser("validate", help="?????")
     validate_parser.add_argument("package_dir", type=Path)
-    validate_parser.add_argument("--model-id", help="ONNX filename relative to package_dir")
+    validate_parser.add_argument("--model-id", help="??? package_dir ? ONNX ???")
     validate_parser.add_argument("--strict-hash", action="store_true")
     validate_parser.add_argument("--strict-onnx", action="store_true")
     validate_parser.add_argument("--strict-provenance", action="store_true")
@@ -246,7 +246,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("--json", action="store_true")
     validate_parser.set_defaults(func=_cmd_validate_package)
 
-    create_parser = package_subparsers.add_parser("create", help="Create a standard model package")
+    create_parser = package_subparsers.add_parser("create", help="???????")
     create_parser.add_argument("--output-root", type=Path, default=Path("shared-models"))
     create_parser.add_argument("--project", required=True)
     create_parser.add_argument("--artifact-name", required=True)
@@ -260,42 +260,42 @@ def build_parser() -> argparse.ArgumentParser:
     create_parser.add_argument("--overwrite", action="store_true")
     create_parser.set_defaults(func=_cmd_create_package)
 
-    manifest_parser = subparsers.add_parser("manifest", help="Dataset manifest operations")
+    manifest_parser = subparsers.add_parser("manifest", help="???????")
     manifest_subparsers = manifest_parser.add_subparsers(dest="manifest_command", required=True)
-    manifest_validate_parser = manifest_subparsers.add_parser("validate", help="Validate a JSONL manifest")
+    manifest_validate_parser = manifest_subparsers.add_parser("validate", help="?? JSONL ?????")
     manifest_validate_parser.add_argument("path", type=Path)
     manifest_validate_parser.add_argument("--json", action="store_true")
     manifest_validate_parser.add_argument("--check-local-files", action="store_true")
     manifest_validate_parser.set_defaults(func=_cmd_validate_manifest)
 
-    contract_parser = subparsers.add_parser("contract", help="Delivery contract operations")
+    contract_parser = subparsers.add_parser("contract", help="??????")
     contract_subparsers = contract_parser.add_subparsers(dest="contract_command", required=True)
-    contract_validate_parser = contract_subparsers.add_parser("validate", help="Validate a delivery YAML contract")
+    contract_validate_parser = contract_subparsers.add_parser("validate", help="???? YAML ??")
     contract_validate_parser.add_argument("kind", choices=["models-fragment", "release-decision"])
     contract_validate_parser.add_argument("path", type=Path)
     contract_validate_parser.add_argument("--json", action="store_true")
     contract_validate_parser.set_defaults(func=_cmd_validate_contract)
 
-    storage_parser = subparsers.add_parser("storage", help="Metadata storage operations")
+    storage_parser = subparsers.add_parser("storage", help="???????")
     storage_subparsers = storage_parser.add_subparsers(dest="storage_command", required=True)
-    storage_migrate_parser = storage_subparsers.add_parser("migrate", help="Initialize or upgrade metadata storage")
-    storage_migrate_parser.add_argument("--uri", help="Override SCENARA_MODEL_METADATA_DB")
+    storage_migrate_parser = storage_subparsers.add_parser("migrate", help="???????????")
+    storage_migrate_parser.add_argument("--uri", help="?? SCENARA_MODEL_METADATA_DB ????")
     storage_migrate_parser.set_defaults(func=_cmd_storage_migrate)
 
-    serve_parser = subparsers.add_parser("serve", help="Run the management API")
+    serve_parser = subparsers.add_parser("serve", help="???? API")
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8080)
     serve_parser.add_argument("--reload", action="store_true")
     serve_parser.set_defaults(func=_cmd_serve)
 
-    user_parser = subparsers.add_parser("user", help="Console user management")
+    user_parser = subparsers.add_parser("user", help="???????")
     user_subparsers = user_parser.add_subparsers(dest="user_command", required=True)
-    set_password_parser = user_subparsers.add_parser("set-password", help="Set (or create with --create) a console user password")
+    set_password_parser = user_subparsers.add_parser("set-password", help="?????? --create ??????????")
     set_password_parser.add_argument("--username", required=True)
     set_password_parser.add_argument("--password", required=True)
-    set_password_parser.add_argument("--create", action="store_true", help="Create the user if it does not exist")
+    set_password_parser.add_argument("--create", action="store_true", help="???????????")
     set_password_parser.add_argument("--role", default="admin")
-    set_password_parser.add_argument("--uri", help="Override SCENARA_MODEL_METADATA_DB")
+    set_password_parser.add_argument("--uri", help="?? SCENARA_MODEL_METADATA_DB ????")
     set_password_parser.set_defaults(func=_cmd_user_set_password)
 
     return parser

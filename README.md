@@ -1,12 +1,12 @@
 # Scenara Model
 
-当前版本：`1.0.0-dev.3`。完整变更见 [CHANGELOG.md](CHANGELOG.md)，更新说明见 [docs/RELEASE_1.0.0-dev.3.md](docs/RELEASE_1.0.0-dev.3.md)。
+当前版本：`1.0.0-dev.3`。完整变更见 [更新日志.md](更新日志.md)，更新说明见 [docs/发布说明_1.0.0-dev.3.md](docs/发布说明_1.0.0-dev.3.md)。
 
 `scenara-model` 是景枢模型平台的责任仓库，负责实验、训练任务、模型评估、模型版本、模型注册和不可变 Model Package 发布。训练数据只引用 `scenara-data` 发布的不可变 Dataset Version；生产准入、激活、流量切换和回滚由 `scenara` 负责。
 
-当前成熟度为 `seed`。仓库由 `vision-model-lab` 迁移而来，已有训练与制品能力可以继续验证，但共享 IAM、统一 Console 和正式跨仓库契约接入尚未完成，因此不得标记为 `production_ready`。责任团队为 Scenara Model，迁移门禁和临时例外见 [ADR-0001](docs/adr/0001-repository-rename-and-control-plane-transition.md)。
+当前成熟度为 `seed`。仓库由 `vision-model-lab` 迁移而来，已有训练与制品能力可以继续验证，但共享 IAM、统一 Console 和正式跨仓库契约接入尚未完成，因此不得标记为 `production_ready`。责任团队为 Scenara Model，迁移门禁和临时例外见 [ADR-0001](docs/adr/0001-仓库更名与共享控制面迁移.md)。
 
-当前未完成项和验收顺序见 [剩余任务计划](docs/REMAINING_TASK_PLAN.md)。
+当前未完成项和验收顺序见 [剩余任务计划](docs/剩余任务计划.md)。
 
 ## 当前能力
 
@@ -105,11 +105,11 @@ defect_classifier_resnet50_v2.0.0_fp16.onnx
 - 前端：React + TypeScript + Vite。
 - 大文件：NAS、MinIO、S3 或本地挂载目录，不提交 Git；当前内置 local/S3/MinIO 对象存储 provider。
 
-更多设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/DELIVERY_STANDARD.md](docs/DELIVERY_STANDARD.md) 和 [docs/OPERATIONS.md](docs/OPERATIONS.md)。
+更多设计见 [docs/架构设计.md](docs/架构设计.md)、[docs/模型交付标准.md](docs/模型交付标准.md) 和 [docs/运行维护手册.md](docs/运行维护手册.md)。
 
-生产部署和验收见 [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md)。
+生产部署和验收见 [docs/生产交付验收.md](docs/生产交付验收.md)。
 
-版本变更见 [CHANGELOG.md](CHANGELOG.md)。
+版本变更见 [更新日志.md](更新日志.md)。
 
 启动后访问：
 

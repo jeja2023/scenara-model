@@ -7,7 +7,7 @@ import sys
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate an external model-training runtime")
+    parser = argparse.ArgumentParser(description="????????????")
     parser.add_argument("--require-module", action="append", default=[])
     parser.add_argument("--require-cuda", action="store_true")
     parser.add_argument("--min-cuda-devices", type=int, default=1)

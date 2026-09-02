@@ -1075,7 +1075,7 @@ def templates() -> dict[str, Any]:
         "model_card": "configs/export/model-card.template.yml",
         "dataset": "configs/datasets/example_dataset.yml",
         "experiment": "configs/experiments/detection_yolo_baseline.yml",
-        "labeling_guideline": "labeling/guidelines/detection_template.md",
+        "labeling_guideline": "labeling/guidelines/检测任务标注规范模板.md",
         "quality_rules": "labeling/quality_rules/default_detection.yml",
         "release_decision": "configs/export/release-decision.template.yml",
         "detection_pipeline": "configs/experiments/detection_yolo_baseline.yml",

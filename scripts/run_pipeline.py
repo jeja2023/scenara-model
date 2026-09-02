@@ -11,7 +11,7 @@ from scenara_model.pipeline import run_experiment_pipeline
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run train/export/evaluate pipeline")
+    parser = argparse.ArgumentParser(description="????/??/?????")
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--package", action="store_true")
     parser.add_argument("--output-root", type=Path, default=Path("shared-models"))

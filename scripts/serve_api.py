@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the Scenara Model management API")
+    parser = argparse.ArgumentParser(description="?? Scenara Model ?? API")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--reload", action="store_true")

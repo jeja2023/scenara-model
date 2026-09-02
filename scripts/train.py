@@ -11,7 +11,7 @@ from scenara_model.adapters.registry import run_stage
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Training entry point")
+    parser = argparse.ArgumentParser(description="??????")
     parser.add_argument("--config", type=Path, required=True)
     args = parser.parse_args()
     result = run_stage("training", args.config)

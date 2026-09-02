@@ -24,7 +24,7 @@ dev = [
   "pytest-asyncio>=0.25",
   "pyright>=1.1.411",
   "ruff>=0.8",
-  # Migration tests invoke Alembic and SQLAlchemy directly.
+  # 迁移测试直接调用 Alembic 和 SQLAlchemy。
   "alembic>=1.13",
   "SQLAlchemy>=2.0"
 ]

@@ -39,10 +39,12 @@ def run(command: list[str], *, env: dict[str, str] | None = None, timeout: int =
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run offline acceptance checks")
-    parser.add_argument("--runtime-base-url", help="Also check a running API instance")
-    parser.add_argument("--skip-pytest", action="store_true", help="Skip pytest when the caller already ran it (e.g. CI)")
+    parser = argparse.ArgumentParser(description="运行离线交付验收检查")
+    parser.add_argument("--runtime-base-url", help="同时检查正在运行的 API 实例地址")
+    parser.add_argument("--skip-pytest", action="store_true", help="跳过 pytest 执行（例如调用方已在 CI 中单独运行）")
     args = parser.parse_args()
+
+    plan_doc = "训练标注与模型研发配套方案.md" if (ROOT / "训练标注与模型研发配套方案.md").exists() else "MODEL_RND_TRAINING_PLAN.md"
 
     env = os.environ.copy()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -59,7 +61,7 @@ def main() -> int:
         run([sys.executable, "scripts/evaluate.py", "--config", "configs/experiments/reference_identity.yml"]),
         run([sys.executable, "scripts/run_pipeline.py", "--config", "configs/experiments/detection_yolo_baseline.yml", "--package"]),
         run([sys.executable, "scripts/validate_model_package.py", "shared-models", "--strict-hash", "--strict-onnx"]),
-        run([sys.executable, "scripts/hash_artifact.py", "MODEL_RND_TRAINING_PLAN.md"]),
+        run([sys.executable, "scripts/hash_artifact.py", plan_doc]),
         run([sys.executable, "-c", "import sys; sys.path.insert(0, 'src'); from scenara_model.api import app; print(app.title)"]),
     ])
     if args.runtime_base_url:
