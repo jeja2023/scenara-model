@@ -7,6 +7,9 @@ from scenara_model.adapters.base import AdapterResult, LogLineSink, TaskAdapter
 from scenara_model.adapters.local_tasks import (
     CLASSIFICATION_BASELINE,
     DETECTION_YOLO_BASELINE,
+    FASHION_MULTIHEAD_ADAPTER,
+    PADDLEOCR_ADAPTER,
+    PADDLEVIDEO_ADAPTER,
     REID_BASELINE,
     SEGMENTATION_BASELINE,
     SEGMENTATION_FRAMEWORK_ADAPTER,
@@ -27,6 +30,9 @@ ADAPTERS: dict[str, TaskAdapter] = {
     TORCHREID_ADAPTER.name: TORCHREID_ADAPTER,
     TORCHVISION_CLASSIFICATION_ADAPTER.name: TORCHVISION_CLASSIFICATION_ADAPTER,
     SEGMENTATION_FRAMEWORK_ADAPTER.name: SEGMENTATION_FRAMEWORK_ADAPTER,
+    PADDLEOCR_ADAPTER.name: PADDLEOCR_ADAPTER,
+    PADDLEVIDEO_ADAPTER.name: PADDLEVIDEO_ADAPTER,
+    FASHION_MULTIHEAD_ADAPTER.name: FASHION_MULTIHEAD_ADAPTER,
 }
 
 
@@ -36,6 +42,9 @@ DEFAULT_TASK_ADAPTERS = {
     "reid": "reid_baseline",
     "classification": "classification_baseline",
     "segmentation": "segmentation_baseline",
+    "ocr": "paddleocr",
+    "behavior": "paddlevideo",
+    "fashion": "fashion_multihead",
 }
 
 

@@ -1,6 +1,6 @@
 # Scenara Model
 
-当前版本：`1.0.0-dev.2`。完整变更见 [CHANGELOG.md](CHANGELOG.md)，迁移说明见 [docs/RELEASE_1.0.0-dev.2.md](docs/RELEASE_1.0.0-dev.2.md)。
+当前版本：`1.0.0-dev.3`。完整变更见 [CHANGELOG.md](CHANGELOG.md)，更新说明见 [docs/RELEASE_1.0.0-dev.3.md](docs/RELEASE_1.0.0-dev.3.md)。
 
 `scenara-model` 是景枢模型平台的责任仓库，负责实验、训练任务、模型评估、模型版本、模型注册和不可变 Model Package 发布。训练数据只引用 `scenara-data` 发布的不可变 Dataset Version；生产准入、激活、流量切换和回滚由 `scenara` 负责。
 
@@ -15,7 +15,8 @@
 - JSONL 数据 manifest 校验。
 - FastAPI 管理接口。
 - 迁移期 React/TypeScript 管理台源码，部署默认禁用并冻结新增业务；本地 `python start.py` 会为一键体验自动构建并托管，正式入口必须接入 `scenara` 统一 Console。
-- YOLO 检测、ReID、分类、分割的本地基线适配器；配置 `training.command`、`export.command`、`evaluation.command` 后会执行真实外部框架命令并记录日志。baseline 仅用于 smoke，生产包默认要求真实 checkpoint、ONNX、实测指标、样例和阈值。
+- YOLO 检测、ReID、分类、分割的本地基线适配器，以及 OCR、Behavior、Fashion 的失败关闭生产适配器入口；后三类必须显式配置真实训练、导出、评估命令和实测指标，不提供静默基线。
+- 支持按文件摘要校验 Paddle、PyTorch 和多头模型 bundle，并生成 Contracts `1.2.0` 模型准入载荷；ReID 可消费 Data 发布的布控误报复核数据集版本。
 - 实验记录、流水线运行、任务日志、产物索引、模型包校验、Dataset Version 引用、模型注册和模型制品发布的元数据存储。
 - local/S3/MinIO 对象存储入口、上传接口和误差样本摘要。
 - 迁移期本地鉴权与静态令牌兼容实现；正式部署前必须替换为 Core 信任的短期服务凭据和统一权限 ID。

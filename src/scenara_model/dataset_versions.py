@@ -26,6 +26,8 @@ class DatasetVersionReference(BaseModel):
     authorization_id: str = Field(min_length=1, max_length=256)
     authorized_consumer_repository_ids: tuple[str, ...] = Field(min_length=1, max_length=32)
     created_at: str = Field(pattern=RFC3339_UTC_PATTERN)
+    domain: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_.-]{1,63}$")
+    annotation_schema_ids: tuple[str, ...] = Field(default_factory=tuple, max_length=100)
 
     @field_validator("created_at")
     @classmethod
@@ -48,6 +50,8 @@ class DatasetVersionReference(BaseModel):
             raise ValueError("manifest_uri digest must match manifest_sha256")
         if CONSUMER_REPOSITORY_ID not in self.authorized_consumer_repository_ids:
             raise ValueError("DatasetVersionReference does not authorize scenara-model")
+        if len(self.annotation_schema_ids) != len(set(self.annotation_schema_ids)):
+            raise ValueError("annotation_schema_ids must be unique")
         return self
 
 
@@ -114,6 +118,23 @@ def reference_validation_issues(config: dict[str, Any], workspace: str | Path) -
         )
     except ValueError as exc:
         return [str(exc)]
+    task = str(config.get("experiment", {}).get("task") or dataset.get("task") or "")
+    expected_domain = {
+        "reid": "portrait",
+        "ocr": "ocr",
+        "behavior": "behavior",
+        "fashion": "fashion",
+    }.get(task)
+    if expected_domain is not None and reference.domain != expected_domain:
+        return [f"dataset reference domain must be {expected_domain} for task {task}"]
+    expected_schema = {
+        "reid": "scenara.portrait.surveillance-review.v1",
+        "ocr": "scenara.ocr.document.v1",
+        "behavior": "scenara.behavior.action.v1",
+        "fashion": "scenara.fashion.style.v1",
+    }.get(task)
+    if expected_schema is not None and expected_schema not in reference.annotation_schema_ids:
+        return [f"dataset reference must include annotation schema {expected_schema}"]
     return []
 
 

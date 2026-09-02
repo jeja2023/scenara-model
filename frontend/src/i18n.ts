@@ -13,6 +13,9 @@ export function zhStatus(value?: string | null) {
     classification: "图像分类",
     segmentation: "图像分割",
     reid: "人员重识别",
+    ocr: "OCR 文档识别",
+    behavior: "行为识别",
+    fashion: "服饰风格识别",
     reference: "参考流程"
   };
   return value ? map[value] ?? value : "-";

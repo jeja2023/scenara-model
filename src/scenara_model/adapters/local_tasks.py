@@ -1103,3 +1103,36 @@ SEGMENTATION_FRAMEWORK_ADAPTER = LocalTaskAdapter(
     output_shape=[1, 2, 640, 640],
     requires_external_artifacts=True,
 )
+
+PADDLEOCR_ADAPTER = LocalTaskAdapter(
+    name="paddleocr",
+    task="ocr",
+    description="Production OCR training/export/evaluation entrypoint; requires explicit PaddleOCR commands and measured artifacts.",
+    output_format="ocr_bundle",
+    default_metrics={"character_accuracy": 0.0, "text_accuracy": 0.0, "edit_distance": 0.0},
+    default_labels=["text"],
+    output_shape=[1, 1],
+    requires_external_artifacts=True,
+)
+
+PADDLEVIDEO_ADAPTER = LocalTaskAdapter(
+    name="paddlevideo",
+    task="behavior",
+    description="Production behavior recognition entrypoint; requires explicit PaddleVideo commands and measured temporal metrics.",
+    output_format="behavior_bundle",
+    default_metrics={"action_f1": 0.0, "temporal_iou": 0.0},
+    default_labels=["action"],
+    output_shape=[1, 1],
+    requires_external_artifacts=True,
+)
+
+FASHION_MULTIHEAD_ADAPTER = LocalTaskAdapter(
+    name="fashion_multihead",
+    task="fashion",
+    description="Production fashion multi-head entrypoint for character, style, and accessory models with measured metrics.",
+    output_format="fashion_bundle",
+    default_metrics={"macro_f1": 0.0, "map50": 0.0},
+    default_labels=["fashion"],
+    output_shape=[1, 1],
+    requires_external_artifacts=True,
+)

@@ -2,14 +2,14 @@
 
 **适用规范：** `景枢平台总体开发规范.md` 1.3.0
 
-**当前版本：** `1.0.0-dev.2`
+**当前版本：** `1.0.0-dev.3`
 
 **当前成熟度：** `seed`
 
 ## 已完成基线
 
 - Training Job、Experiment、异步流水线、任务日志、产物索引和取消/重试状态机。
-- `dataset-version-input` 引用校验：授权、版本、UTC RFC3339 时间和 manifest SHA-256。
+- `dataset-version-input` 引用校验：授权、版本、UTC RFC3339 时间和 manifest SHA-256；ReID 已适配 `scenara.portrait.surveillance-review.v1` 布控误报复核数据集。
 - 训练/导出/评估 Adapter、模型卡、Model Package、Registry、Release Approval 和 Rollout API。
 - 本地 SQLite/PostgreSQL 元数据边界、local/S3/MinIO 对象存储入口、认证和审计。
 

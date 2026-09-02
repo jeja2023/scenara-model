@@ -10,7 +10,7 @@ type ExperimentsProps = {
 };
 
 // 表单存英文码、展示层用 zhStatus 翻译——避免中文显示值污染后端状态词汇表。
-const taskOptions = ["detection", "classification", "segmentation", "reid", "reference"] as const;
+const taskOptions = ["detection", "classification", "segmentation", "reid", "ocr", "behavior", "fashion", "reference"] as const;
 const statusOptions = ["planned", "running", "completed", "failed", "packaged"] as const;
 
 export function Experiments({ experiments, onRefresh }: ExperimentsProps) {

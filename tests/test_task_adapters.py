@@ -55,6 +55,9 @@ def test_reid_classification_and_segmentation_adapters_are_registered_and_runnab
         "torchreid",
         "torchvision_classifier",
         "segmentation_framework",
+        "paddleocr",
+        "paddlevideo",
+        "fashion_multihead",
     } <= adapters
 
     for config in [
@@ -67,6 +70,32 @@ def test_reid_classification_and_segmentation_adapters_are_registered_and_runnab
         assert export_result.status == "completed"
         assert eval_result.status == "completed"
         assert Path(export_result.payload["onnx"]).exists()
+
+
+@pytest.mark.parametrize(
+    ("task", "adapter"),
+    (("ocr", "paddleocr"), ("behavior", "paddlevideo"), ("fashion", "fashion_multihead")),
+)
+def test_multidomain_production_adapters_fail_closed_without_commands(
+    workspace_tmp_path: Path,
+    task: str,
+    adapter: str,
+) -> None:
+    config = workspace_tmp_path / f"{task}.yml"
+    write_yaml(
+        config,
+        {
+            "experiment": {"id": f"{task}_production_gate", "task": task},
+            "dataset": {"name": f"{task}_dataset", "version": "1.0.0"},
+            "model": {"architecture": "external", "version": "1.0.0"},
+            "training": {"adapter": adapter},
+        },
+    )
+    result = run_stage("training", config)
+    assert result.status == "failed"
+    assert "training.command is required for a production training adapter" in result.payload[
+        "preflight_issues"
+    ]
 
 
 def test_external_training_command_is_executed(workspace_tmp_path: Path) -> None:

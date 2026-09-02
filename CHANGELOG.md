@@ -2,11 +2,25 @@
 
 本文件记录 `scenara-model` 的主要功能变更、交付状态和验证结果。格式参考 Keep a Changelog，版本号遵循语义化版本。
 
-## [Unreleased]
+## [1.0.0-dev.3] - 2026-09-02
 
-- 同步 `@scenara/repository-contracts` `1.0.1` 的当前 Manifest SHA-256，`DatasetVersionReference.created_at` 按发布契约使用以 `Z` 结尾的 UTC RFC3339 字符串。
-- 模型平台在 Dataset Version 注册和生产模型卡校验路径拒绝 Unix 数值时间，内部存储和训练运行日志继续使用既有 UTC 字符串时间表示。
-- 补充开发规范中的跨仓时间约束，明确数据集版本消费方不得自行保留或转换数值时间兼容分支。
+### Added
+
+- 锁定并消费 `@scenara/repository-contracts` `1.2.0`（包含 `dataset-version-input`、`deployment-feedback`、`model-package-admission`），Dataset Version 校验严格匹配领域（`portrait`、`ocr`、`behavior`、`fashion`）及对应的 `annotation_schema_ids`。
+- 人像 ReID 训练数据引用与 bundle 模型包全链路适配 `scenara.portrait.surveillance-review.v1` 布控误报复核标注规范。
+- 新增 PaddleOCR、PaddleVideo、Fashion multi-head 生产适配器入口（`paddleocr`、`paddlevideo`、`fashion_multihead`）；缺少外部真实训练/导出/评估命令及实测制品时严格失败关闭（fail-closed）。
+- 新增 `scenara_model.packaging.artifact_bundle` 模块，支持 Paddle、PyTorch、多文件 `bundle-manifest.json` 清单逐文件摘要、大小、路径防逃逸、媒体类型和模型卡引用校验，并生成 Core 模型准入载荷（`admission_payload`）。
+- 迁移期前端模型工作台与实验表单新增 OCR 文档识别、行为识别、服饰风格识别任务类型及中文状态映射。
+
+### Changed
+
+- 将 Python 包、运行时版本、前端包和 package-lock 统一升级到 `1.0.0-dev.3` / `1.0.0.dev3`。
+- 模型准入载荷默认设置为 `production_ready=false`，必须由外部统一资格评审流程确权后激活。
+
+### Verified
+
+- 全量自动化测试通过（109 passed）；Pyright 静态类型检查达到 0 errors, 0 warnings；Ruff 代码风格检查全部通过。
+- 离线验收脚本 `scripts/acceptance_check.py` 严格校验通过；前端 TypeScript 及 Vite 8 生产构建通过；生产依赖安全审计为 0 vulnerabilities。
 
 ## [1.0.0-dev.2] - 2026-08-22
 

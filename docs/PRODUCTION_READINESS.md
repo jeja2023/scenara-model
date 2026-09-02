@@ -124,6 +124,15 @@ python -m pip check
 
 如果需要同时安装 Paddle、Torch、ONNX 优化器等重依赖，建议为训练框架另建环境，平台 API 环境只保留管理、校验和 ONNX Runtime 所需依赖。
 
+## 1.0.0-dev.3 发布门禁
+
+- Python 包、运行时 `__version__`、前端包版本和 lockfile 已统一为 `1.0.0-dev.3` / `1.0.0.dev3`，并由 `scripts/check_versions.py` 自动校验。
+- 锁定 `@scenara/repository-contracts` `1.2.0`；Dataset Version 与人像 ReID bundle 适配 `scenara.portrait.surveillance-review.v1` 标注规范。
+- 增加 PaddleOCR、PaddleVideo、Fashion multi-head 生产适配器入口，并在缺少外部命令和实测产物时严格失败关闭（fail-closed）。
+- 支持多文件 bundle 清单校验及模型准入载荷（`admission_payload`）生成，默认 `production_ready=false`。
+- `.venv\Scripts\python.exe -m pytest` 为 `109 passed`；`scripts/acceptance_check.py --skip-pytest` 通过；Pyright 为 `0 errors, 0 warnings`；前端 Vite 8 构建及 npm audit 通过。
+- 完整说明见 `docs/RELEASE_1.0.0-dev.3.md`。
+
 ## 1.0.0-dev.2 发布门禁
 
 - Python 包、运行时 `__version__`、前端包版本和 lockfile 已统一为 `1.0.0-dev.2` / `1.0.0.dev2`，并由 `scripts/check_versions.py` 自动校验。
