@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Windows-only FastReID GPU smoke validation. This is not a supported production training runtime; production uses the Linux lock file.",
+  "python": "3.12",
+  "pytorch": "2.5.1+cu121",
+  "torchvision": "0.20.1+cu121",
+  "faiss": "faiss-cpu==1.15.0",
+  "fastreid": {
+    "repository": "https://github.com/JDAI-CV/fast-reid.git",
+    "revision": "c9bc3ceb2f7a6438b62fb515ea3df6d1e999e95d"
+  },
+  "validation": [
+    "Import FastReID engine on Windows with the compatibility shim.",
+    "Build a ResNet-18 FastReID baseline on CUDA.",
+    "Run one CUDA inference pass and verify a GPU-resident embedding output."
+  ]
+}

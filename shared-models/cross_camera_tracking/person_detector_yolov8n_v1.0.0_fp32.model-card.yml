@@ -42,7 +42,7 @@ provenance:
   experiment_id: person_detector_20260603_001
   config_path: configs/experiments/detection_yolo_baseline.yml
   config_sha256: 2c384d60f5fbfae22081d803dda3293222b4e1f72570f321c1ca1e780207dec9
-  code_revision: c178fe3ead4b247754f07a79f516abd445be053b
+  code_revision: e900d8708c3e17f9a6cf1a2917de8a30e02d7277
   training:
     adapter: detection_yolo_baseline
     command: null

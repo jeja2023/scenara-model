@@ -1,0 +1,40 @@
+# The FastReID upstream project documents Linux/macOS support and has retained
+# PyTorch 1.x compatibility imports.  Keep it out of the API image and pin the
+# full base-image digest so an experiment can be reproduced later.
+FROM pytorch/pytorch@sha256:58d848c38665fd3ed20bee65918255cb083637c860eb4fae67face2fb2ff5702
+
+ARG FASTREID_REPOSITORY=https://github.com/JDAI-CV/fast-reid.git
+ARG FASTREID_REVISION=c9bc3ceb2f7a6438b62fb515ea3df6d1e999e95d
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/workspace/src:/workspace/third_party/fast-reid \
+    FASTREID_DATASETS=/workspace/artifacts/fastreid-data/person_reid
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends build-essential git \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --no-cache-dir --upgrade pip
+
+COPY pyproject.toml README.md constraints.txt ./
+COPY src ./src
+
+RUN python -m pip install --no-cache-dir -c constraints.txt .
+
+COPY scripts ./scripts
+COPY configs ./configs
+COPY deploy ./deploy
+
+RUN git clone "$FASTREID_REPOSITORY" /workspace/third_party/fast-reid \
+    && git -C /workspace/third_party/fast-reid checkout --detach "$FASTREID_REVISION" \
+    && test "$(git -C /workspace/third_party/fast-reid rev-parse HEAD)" = "$FASTREID_REVISION" \
+    && grep --invert-match '^faiss-gpu$' /workspace/third_party/fast-reid/docs/requirements.txt > /tmp/fastreid-requirements.txt \
+    && python -m pip install --no-cache-dir -r /tmp/fastreid-requirements.txt cython faiss-cpu \
+    && python -c "import fastreid, torch; assert fastreid.__version__ == '1.3'; assert torch.__version__.startswith('1.13.')"
+
+WORKDIR /workspace
+
+RUN python /workspace/scripts/fastreid/runtime_check.py --no-cuda-check
+
+CMD ["python", "/workspace/scripts/fastreid/runtime_check.py"]

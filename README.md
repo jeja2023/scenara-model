@@ -1,6 +1,6 @@
 # Scenara Model
 
-当前版本：`1.0.0-dev.3`。完整变更见 [更新日志.md](更新日志.md)，更新说明见 [docs/发布说明_1.0.0-dev.3.md](docs/发布说明_1.0.0-dev.3.md)。
+当前版本：`1.0.0-dev.4`。完整变更见 [更新日志.md](更新日志.md)，更新说明见 [docs/发布说明_1.0.0-dev.4.md](docs/发布说明_1.0.0-dev.4.md)。
 
 `scenara-model` 是景枢模型平台的责任仓库，负责实验、训练任务、模型评估、模型版本、模型注册和不可变 Model Package 发布。训练数据只引用 `scenara-data` 发布的不可变 Dataset Version；生产准入、激活、流量切换和回滚由 `scenara` 负责。
 
@@ -15,10 +15,11 @@
 - JSONL 数据 manifest 校验。
 - FastAPI 管理接口。
 - 迁移期 React/TypeScript 管理台源码，部署默认禁用并冻结新增业务；本地 `python start.py` 会为一键体验自动构建并托管，正式入口必须接入 `scenara` 统一 Console。
-- YOLO 检测、ReID、分类、分割的本地基线适配器，以及 OCR、Behavior、Fashion 的失败关闭生产适配器入口；后三类必须显式配置真实训练、导出、评估命令和实测指标，不提供静默基线。
+- YOLO 检测、ReID、分类、分割的本地基线适配器，以及 FastReID、OCR、Behavior、Fashion 的失败关闭生产适配器入口；FastReID 固定框架提交和环境锁，必须回传 checkpoint、mAP、Rank-1/5/10 与实测制品，不提供静默基线。
+- FastReID 提供独立 Linux GPU 容器、manifest 物化、训练、固定测试集评估和 ONNX 导出桥接；Windows CUDA 环境仅用于开发冒烟，不作为生产训练资格。
 - 支持按文件摘要校验 Paddle、PyTorch 和多头模型 bundle，并生成 Contracts `1.2.0` 模型准入载荷；ReID 可消费 Data 发布的布控误报复核数据集版本。
 - 实验记录、流水线运行、任务日志、产物索引、模型包校验、Dataset Version 引用、模型注册和模型制品发布的元数据存储。
-- local/S3/MinIO 对象存储入口、上传接口和误差样本摘要。
+- local/S3/MinIO 对象存储入口、上传接口和误差样本摘要，以及 PostgreSQL/S3 目标探针和 PostgreSQL 备份恢复工具。
 - 迁移期本地鉴权与静态令牌兼容实现；正式部署前必须替换为 Core 信任的短期服务凭据和统一权限 ID。
 
 ## 一键启动
@@ -58,6 +59,8 @@ python scripts/export_onnx.py --config configs/experiments/reference_identity.ym
 python scripts/evaluate.py --config configs/experiments/reference_identity.yml
 python scripts/run_pipeline.py --config configs/experiments/detection_yolo_baseline.yml --package
 python scripts/train.py --config configs/experiments/detection_ultralytics_external.yml
+python scripts/fastreid/windows_smoke.py  # 仅 Windows 开发冒烟；需预先准备 .venv-fastreid-smoke
+python scripts/qualify_target_environment.py --help
 python scripts/validate_model_package.py shared-models --allow-missing-sidecars --allow-missing-examples
 python scripts/serve_api.py --host 127.0.0.1 --port 8080
 python scripts/runtime_check.py --base-url http://127.0.0.1:8080
@@ -109,6 +112,8 @@ defect_classifier_resnet50_v2.0.0_fp16.onnx
 
 生产部署和验收见 [docs/生产交付验收.md](docs/生产交付验收.md)。
 
+FastReID 训练运行方式见 [docs/FastReID训练运行手册.md](docs/FastReID训练运行手册.md)，本机基础设施演练结果见 [docs/资格验证报告_2026-09-04.md](docs/资格验证报告_2026-09-04.md)。
+
 版本变更见 [更新日志.md](更新日志.md)。
 
 启动后访问：
@@ -123,6 +128,7 @@ defect_classifier_resnet50_v2.0.0_fp16.onnx
 - API 静态文件回退和模型包 `model_id` 已增加路径边界校验，防止读取工作区或包目录外文件。
 - 流水线支持异步 job：`POST /api/pipelines/run` 可传 `{"async": true}`，并通过 `/api/pipelines/jobs` 查询、取消或重试。
 - 外部训练命令默认禁用 shell 字符串，只允许 argv list；可通过 `SCENARA_MODEL_ALLOW_SHELL_COMMANDS` 显式兼容旧配置。
+- 可消费 Core 签名的 `deployment-feedback` Webhook，并按 event ID 幂等处理有序状态回放；配置见 [部署反馈消费说明](docs/部署反馈消费说明.md)。
 - 本地对象存储、上传大小、pipeline worker 数、外部命令超时和日志长度均可通过环境变量配置。
 - SQLite 元数据存储使用 journal mode 逐级回退、busy timeout 和线程锁；多实例生产部署仍建议迁移 PostgreSQL。
 ## 0.3.0 环境与发布说明

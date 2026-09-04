@@ -1,0 +1,25 @@
+# Dedicated Linux GPU image for FastReID.  The API service deliberately does
+# not contain this framework or its CUDA dependencies.
+#
+# docker compose -f deploy/training/docker-compose.fastreid.yml build
+# docker compose -f deploy/training/docker-compose.fastreid.yml run --rm fastreid
+services:
+  fastreid:
+    build:
+      context: ../..
+      dockerfile: deploy/training/Dockerfile.fastreid
+    image: scenara-model/fastreid:c9bc3ceb2f7a
+    gpus: all
+    working_dir: /workspace
+    environment:
+      SCENARA_MODEL_WORKSPACE: /workspace
+      FASTREID_DATASETS: /workspace/artifacts/fastreid-data/person_reid
+    volumes:
+      - ../../configs:/workspace/configs:ro
+      - ../../data:/workspace/data:ro
+      - ../../deploy:/workspace/deploy:ro
+      - ../../scripts:/workspace/scripts:ro
+      - ../../src:/workspace/src:ro
+      - ../../artifacts:/workspace/artifacts
+      - ../../experiments:/workspace/experiments
+      - ../../shared-models:/workspace/shared-models

@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "purpose": "FastReID training runtime declaration. FastReID 1.3 requires Linux or macOS and retains PyTorch 1.x compatibility code, so this image is intentionally separate from the Windows management API environment.",
+  "os": "linux/amd64",
+  "python": "3.10",
+  "cuda": "11.6",
+  "pytorch": "1.13.1",
+  "torchvision": "0.14.1",
+  "base_image": "pytorch/pytorch@sha256:58d848c38665fd3ed20bee65918255cb083637c860eb4fae67face2fb2ff5702",
+  "fastreid": {
+    "repository": "https://github.com/JDAI-CV/fast-reid.git",
+    "revision": "c9bc3ceb2f7a6438b62fb515ea3df6d1e999e95d"
+  },
+  "install": [
+    "docker build --file deploy/training/Dockerfile.fastreid --tag scenara-model/fastreid:c9bc3ceb2f7a .",
+    "docker run --rm --gpus all scenara-model/fastreid:c9bc3ceb2f7a python /workspace/scripts/fastreid/runtime_check.py"
+  ]
+}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -150,6 +151,18 @@ def validate_package_trust(
     limitations = package.get("limitations")
     if not isinstance(limitations, list) or not limitations or any("fill in" in str(item).lower() for item in limitations):
         issues.append("package.limitations must contain real known limitations")
+    training_config = config.get("training", {}) if isinstance(config.get("training"), dict) else {}
+    if training_config.get("adapter") == "fastreid":
+        license_info = package.get("license")
+        if not isinstance(license_info, dict):
+            issues.append("package.license is required for a FastReID production package")
+        else:
+            for key in ("name", "source_url", "sha256", "approval_reference"):
+                if not str(license_info.get(key) or "").strip():
+                    issues.append(f"package.license.{key} is required for a FastReID production package")
+            digest = str(license_info.get("sha256") or "").lower()
+            if digest and re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+                issues.append("package.license.sha256 must be a SHA-256 digest")
     issues.extend(_manifest_issues(config, Path(workspace).resolve()))
     issues.extend(reference_validation_issues(config, Path(workspace).resolve()))
     return PackageTrust(profile=profile, issues=issues)
@@ -262,6 +275,7 @@ def build_model_card_data(
         },
         "metrics": metrics,
         "metric_thresholds": dict(package.get("metric_thresholds", {})) if isinstance(package.get("metric_thresholds", {}), dict) else {},
+        **({"license": dict(package["license"])} if isinstance(package.get("license"), dict) else {}),
         "deployment": deployment,
         "limitations": limitations,
         "provenance": {
@@ -274,6 +288,7 @@ def build_model_card_data(
                 "adapter": training.get("adapter") or (config.get("training", {}).get("adapter") if isinstance(config.get("training"), dict) else None),
                 "command": config.get("training", {}).get("command") if isinstance(config.get("training"), dict) else None,
                 "checkpoint": checkpoint,
+                **({"framework": training["framework"]} if isinstance(training.get("framework"), dict) else {}),
             },
             "export": {
                 "onnx_source": export.get("onnx_source", ""),

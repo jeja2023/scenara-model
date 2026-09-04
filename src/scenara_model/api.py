@@ -27,6 +27,7 @@ from scenara_model.auth import generate_session_token, hash_password, token_dige
 from scenara_model.contracts import validate_models_fragment, validate_release_decision
 from scenara_model.dataset_versions import DatasetVersionReference, validate_dataset_version_reference
 from scenara_model.datasets.manifest import validate_manifest
+from scenara_model.deployment_feedback import DeploymentFeedbackError, DeploymentFeedbackSignatureError, verify_deployment_feedback
 from scenara_model.naming import parse_artifact_name
 from scenara_model.object_store import object_store_from_settings
 from scenara_model.packaging.model_package import validate_model_package
@@ -56,7 +57,7 @@ GENERATED_ADMIN_PASSWORD_BYTES = 12
 WORKER_ID = f"{socket.gethostname()}:{os.getpid()}"
 
 # 无需登录即可访问的 API 路径（登录本身与健康检查）。
-PUBLIC_API_PATHS = {"/api/auth/login"}
+PUBLIC_API_PATHS = {"/api/auth/login", "/api/v1/deployment-feedback"}
 
 
 class _LoginThrottle:
@@ -1067,6 +1068,75 @@ def create_deployment_rollout(request: DeploymentRolloutRequest) -> dict[str, An
         detail={"environment": request.environment, "traffic_percent": request.traffic_percent},
     )
     return {"rollout": rollout}
+
+
+@app.post("/api/v1/deployment-feedback", status_code=202)
+async def receive_deployment_feedback(request: Request) -> JSONResponse:
+    """Consume Core's signed `model.deployment.changed` event.
+
+    Webhook authentication deliberately happens on the raw request body before
+    JSON parsing.  Core's outbox is at-least-once, so storage owns both event-id
+    idempotency and ordered state replay for each tenant/project/capability.
+    """
+    body = await request.body()
+    try:
+        verified = verify_deployment_feedback(
+            body=body,
+            event_id_header=request.headers.get("Scenara-Event-Id"),
+            timestamp_header=request.headers.get("Scenara-Timestamp"),
+            signature_header=request.headers.get("Scenara-Signature"),
+            secret=SETTINGS.deployment_feedback_secret,
+            max_age_seconds=SETTINGS.deployment_feedback_max_age_seconds,
+        )
+    except DeploymentFeedbackSignatureError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except DeploymentFeedbackError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    event = verified.envelope.data
+    try:
+        outcome = STORE.record_deployment_feedback_event(
+            event.model_dump(mode="json"),
+            body_sha256=verified.body_sha256,
+            occurred_at_ms=event.created_at_epoch_ms(),
+        )
+    except ValueError as exc:
+        # Reusing an event_id for another payload is an outbox/protocol fault;
+        # retrying it must not be silently accepted as a normal duplicate.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    processing_status = str(outcome["event"]["processing_status"])
+    STORE.record_audit_event(
+        actor="scenara-webhook",
+        action="deployment.feedback." + processing_status,
+        target=event.model_id,
+        detail={
+            "event_id": event.event_id,
+            "tenant_id": event.tenant_id,
+            "project_id": event.project_id,
+            "capability": event.capability,
+            "from_status": event.from_status,
+            "to_status": event.to_status,
+            "duplicate": bool(outcome["duplicate"]),
+            "body_sha256": verified.body_sha256,
+        },
+    )
+    response = {
+        "accepted": processing_status != "rejected_transition",
+        "duplicate": bool(outcome["duplicate"]),
+        "applied": bool(outcome["applied"]),
+        "processing_status": processing_status,
+        "event_id": event.event_id,
+        "state": outcome["state"],
+    }
+    # Duplicate deliveries are successful and intentionally do not cause Core
+    # to retry an already processed outbox event.
+    return JSONResponse(status_code=200 if outcome["duplicate"] else 202, content=response)
+
+
+@app.get("/api/v1/deployment-feedback", dependencies=[Depends(require_auth)])
+def list_deployment_feedback_events(limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
+    return {"events": STORE.list_deployment_feedback_events(limit)}
 
 
 @app.get("/api/templates")

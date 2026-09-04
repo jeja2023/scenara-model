@@ -4,7 +4,7 @@ import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 from urllib.parse import urlparse
 
 
@@ -31,6 +31,12 @@ class ObjectStore(Protocol):
 
 class S3Client(Protocol):
     def upload_file(self, source: str, bucket: str, key: str, ExtraArgs: dict[str, str]) -> object:  # noqa: N803
+        ...
+
+    def get_object(self, *, Bucket: str, Key: str) -> dict[str, Any]:  # noqa: N803
+        ...
+
+    def delete_object(self, *, Bucket: str, Key: str) -> object:  # noqa: N803
         ...
 
 

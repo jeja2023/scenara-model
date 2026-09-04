@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hmac
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -489,6 +491,56 @@ def _read_produced_metrics(evaluation_config: dict[str, Any]) -> tuple[dict[str,
     return metrics, None
 
 
+def _framework_provenance(training: dict[str, Any], expected_name: str) -> tuple[dict[str, Any] | None, list[str]]:
+    """Validate and fingerprint the immutable framework/runtime declaration."""
+    raw = training.get("framework")
+    if not isinstance(raw, dict):
+        return None, ["training.framework is required for this adapter"]
+    name = str(raw.get("name") or "").strip().lower()
+    if name != expected_name:
+        return None, [f"training.framework.name must be {expected_name}"]
+    repository = str(raw.get("repository") or "").strip()
+    if not repository.startswith(("https://", "ssh://", "git@")):
+        return None, ["training.framework.repository must be a source repository URL"]
+    revision = str(raw.get("revision") or "").strip().lower()
+    if re.fullmatch(r"[0-9a-f]{40,64}", revision) is None:
+        return None, ["training.framework.revision must be an immutable 40-64 character Git commit SHA"]
+    lock_value = raw.get("environment_lock")
+    if not lock_value:
+        return None, ["training.framework.environment_lock is required"]
+    try:
+        lock_path = _resolve_workspace_file(str(lock_value))
+    except ValueError as exc:
+        return None, [str(exc)]
+    if not lock_path.is_file():
+        return None, [f"training.framework.environment_lock was not found: {lock_path}"]
+    lock_sha256 = sha256_file(lock_path)
+    declared_lock_sha256 = str(raw.get("environment_lock_sha256") or "").strip().lower()
+    if re.fullmatch(r"[0-9a-f]{64}", declared_lock_sha256) is None:
+        return None, ["training.framework.environment_lock_sha256 must be a SHA-256 digest"]
+    if not hmac.compare_digest(lock_sha256, declared_lock_sha256):
+        return None, ["training.framework.environment_lock_sha256 does not match the lock file"]
+    return {
+        "name": name,
+        "repository": repository,
+        "revision": revision,
+        "environment_lock": str(lock_path),
+        "environment_lock_sha256": lock_sha256,
+    }, []
+
+
+def _required_metric_issues(metrics: dict[str, float], required: tuple[str, ...]) -> list[str]:
+    issues = [f"measured metrics are missing: {name}" for name in required if name not in metrics]
+    for name in required:
+        value = metrics.get(name)
+        if value is not None and (value < 0.0 or value > 1.0):
+            issues.append(f"metric {name} must be between 0 and 1")
+    if {"rank1", "rank5", "rank10"} <= set(required) and not issues:
+        if not metrics["rank1"] <= metrics["rank5"] <= metrics["rank10"]:
+            issues.append("ReID CMC metrics must satisfy rank1 <= rank5 <= rank10")
+    return issues
+
+
 @dataclass(frozen=True)
 class LocalTaskAdapter:
     name: str
@@ -499,6 +551,9 @@ class LocalTaskAdapter:
     default_labels: list[str]
     output_shape: list[int]
     requires_external_artifacts: bool = False
+    framework_name: str | None = None
+    required_evaluation_metrics: tuple[str, ...] = ()
+    required_evaluation_protocol: str | None = None
 
     def train(
         self,
@@ -523,9 +578,25 @@ class LocalTaskAdapter:
                 message="training must be an object.",
             )
         external_command = training.get("command")
+        data_prepare_command = training.get("data_prepare_command")
+        prepared_dataset_value = training.get("prepared_dataset_root")
+        prepared_dataset_root: Path | None = None
+        if prepared_dataset_value:
+            try:
+                prepared_dataset_root = _resolve_workspace_file(str(prepared_dataset_value))
+            except ValueError as exc:
+                return _failed_result(
+                    report_path,
+                    adapter=self.name,
+                    task=self.task,
+                    stage="training",
+                    config_path=config_path,
+                    message=str(exc),
+                )
         checkpoint_value = training.get("produced_checkpoint") or training.get("checkpoint_file")
         checkpoint_path: Path | None = None
         checkpoint_before: dict[str, Any] | None = None
+        framework: dict[str, Any] | None = None
         if checkpoint_value:
             try:
                 checkpoint_path = _resolve_workspace_file(str(checkpoint_value))
@@ -545,6 +616,13 @@ class LocalTaskAdapter:
                 preflight_issues.append("training.command is required for a production training adapter")
             if checkpoint_path is None:
                 preflight_issues.append("training.produced_checkpoint is required for a production training adapter")
+            if self.framework_name:
+                framework, framework_issues = _framework_provenance(training, self.framework_name)
+                preflight_issues.extend(framework_issues)
+                if not data_prepare_command:
+                    preflight_issues.append("training.data_prepare_command is required for FastReID manifest materialization")
+                if prepared_dataset_root is None:
+                    preflight_issues.append("training.prepared_dataset_root is required for FastReID manifest materialization")
             if preflight_issues:
                 return _failed_result(
                     report_path,
@@ -559,8 +637,37 @@ class LocalTaskAdapter:
         message = "Local baseline recorded a reproducible run; replace training.command for framework training."
         external_result: dict[str, Any] | None = None
         preflight_result: dict[str, Any] | None = None
+        data_prepare_result: dict[str, Any] | None = None
         checkpoint: dict[str, Any] | None = None
         if external_command:
+            if data_prepare_command:
+                data_prepare_result = _run_external_command(
+                    data_prepare_command,
+                    cwd=_command_cwd(training),
+                    stage="training_data_prepare",
+                    should_cancel=should_cancel,
+                    log_sink=log_sink,
+                )
+                if not data_prepare_result.get("ok"):
+                    return _failed_result(
+                        report_path,
+                        adapter=self.name,
+                        task=self.task,
+                        stage="training",
+                        config_path=config_path,
+                        message="Training dataset preparation failed.",
+                        detail={"data_preparation": data_prepare_result},
+                    )
+                if prepared_dataset_root is not None and not prepared_dataset_root.is_dir():
+                    return _failed_result(
+                        report_path,
+                        adapter=self.name,
+                        task=self.task,
+                        stage="training",
+                        config_path=config_path,
+                        message=f"training.data_prepare_command did not produce prepared_dataset_root: {prepared_dataset_root}",
+                        detail={"data_preparation": data_prepare_result},
+                    )
             if preflight_command := training.get("preflight_command"):
                 preflight_result = _run_external_command(
                     preflight_command,
@@ -618,16 +725,24 @@ class LocalTaskAdapter:
             report["external"] = external_result
         if preflight_result:
             report["preflight"] = preflight_result
+        if data_prepare_result:
+            report["data_preparation"] = data_prepare_result
         if checkpoint:
             report["checkpoint"] = checkpoint
+        if framework:
+            report["framework"] = framework
         write_json(report_path, report)
         payload: dict[str, Any] = {"report": str(report_path), "message": message}
         if external_result:
             payload["external"] = external_result
         if preflight_result:
             payload["preflight"] = preflight_result
+        if data_prepare_result:
+            payload["data_preparation"] = data_prepare_result
         if checkpoint:
             payload["checkpoint"] = checkpoint
+        if framework:
+            payload["framework"] = framework
         return AdapterResult(status=status, path=report_path, payload=payload)
 
     def export(
@@ -898,6 +1013,12 @@ class LocalTaskAdapter:
                 preflight_issues.append("evaluation.command is required for a production evaluation adapter")
             if metrics_path is None:
                 preflight_issues.append("evaluation.produced_metrics is required for a production evaluation adapter")
+            if self.required_evaluation_protocol:
+                if evaluation_config.get("protocol") != self.required_evaluation_protocol:
+                    preflight_issues.append(f"evaluation.protocol must be {self.required_evaluation_protocol}")
+                dataset = config.get("dataset", {}) if isinstance(config.get("dataset"), dict) else {}
+                if evaluation_config.get("manifest") != dataset.get("test_manifest"):
+                    preflight_issues.append("evaluation.manifest must reference dataset.test_manifest for a fixed evaluation set")
             if preflight_issues:
                 return _failed_result(
                     report_path,
@@ -999,6 +1120,18 @@ class LocalTaskAdapter:
             else:
                 metrics_source = "baseline"
                 message = "Evaluation is a deterministic local baseline until task-specific metric code is configured."
+
+        metric_issues = _required_metric_issues(metrics, self.required_evaluation_metrics)
+        if metric_issues:
+            return _failed_result(
+                report_path,
+                adapter=self.name,
+                task=self.task,
+                stage="evaluation",
+                config_path=config_path,
+                message="Evaluation metric contract failed.",
+                detail={"metric_issues": metric_issues, "metrics": metrics, "external": external_result},
+            )
 
         report = {
             "status": "completed",
@@ -1102,6 +1235,20 @@ SEGMENTATION_FRAMEWORK_ADAPTER = LocalTaskAdapter(
     default_labels=["background", "target"],
     output_shape=[1, 2, 640, 640],
     requires_external_artifacts=True,
+)
+
+FASTREID_ADAPTER = LocalTaskAdapter(
+    name="fastreid",
+    task="reid",
+    description="Production FastReID adapter with pinned framework/runtime provenance and fixed CMC+mAP evaluation contract.",
+    output_format="embedding",
+    default_metrics={"map": 0.0, "rank1": 0.0, "rank5": 0.0, "rank10": 0.0},
+    default_labels=["identity"],
+    output_shape=[1, 128],
+    requires_external_artifacts=True,
+    framework_name="fastreid",
+    required_evaluation_metrics=("map", "rank1", "rank5", "rank10"),
+    required_evaluation_protocol="fastreid-cmc-map-v1",
 )
 
 PADDLEOCR_ADAPTER = LocalTaskAdapter(

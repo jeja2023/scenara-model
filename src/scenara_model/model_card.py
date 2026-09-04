@@ -213,6 +213,33 @@ def validate_model_card(
             checkpoint = training.get("checkpoint") if isinstance(training, dict) else None
             if not isinstance(checkpoint, dict) or not str(checkpoint.get("sha256") or "").strip():
                 issues.append(ModelCardIssue("model_card.missing_checkpoint_provenance", "provenance.training.checkpoint.sha256 is required", "provenance.training.checkpoint"))
+            if isinstance(model, dict) and model.get("task") == "reid" and isinstance(training, dict) and training.get("adapter") == "fastreid":
+                framework = training.get("framework")
+                if not isinstance(framework, dict):
+                    issues.append(ModelCardIssue("model_card.missing_fastreid_provenance", "FastReID packages require provenance.training.framework", "provenance.training.framework"))
+                else:
+                    for field_name in ("repository", "revision", "environment_lock", "environment_lock_sha256"):
+                        if not str(framework.get(field_name) or "").strip():
+                            issues.append(
+                                ModelCardIssue(
+                                    "model_card.missing_fastreid_provenance",
+                                    f"provenance.training.framework.{field_name} is required for FastReID",
+                                    f"provenance.training.framework.{field_name}",
+                                )
+                            )
+                license_info = data.get("license")
+                if not isinstance(license_info, dict):
+                    issues.append(ModelCardIssue("model_card.missing_license_provenance", "FastReID packages require license provenance", "license"))
+                else:
+                    for field_name in ("name", "source_url", "sha256", "approval_reference"):
+                        if not str(license_info.get(field_name) or "").strip():
+                            issues.append(
+                                ModelCardIssue(
+                                    "model_card.missing_license_provenance",
+                                    f"license.{field_name} is required for FastReID",
+                                    f"license.{field_name}",
+                                )
+                            )
             export = provenance.get("export")
             if not isinstance(export, dict) or export.get("onnx_source") != "external_command":
                 issues.append(ModelCardIssue("model_card.untrusted_onnx_source", "provenance.export.onnx_source must be external_command", "provenance.export.onnx_source"))

@@ -54,6 +54,8 @@ class Settings:
     external_command_timeout_seconds: int
     external_command_log_max_chars: int
     allow_shell_commands: bool
+    deployment_feedback_secret: str | None
+    deployment_feedback_max_age_seconds: int
 
 
 def load_settings() -> Settings:
@@ -84,4 +86,6 @@ def load_settings() -> Settings:
         external_command_timeout_seconds=_int_env("SCENARA_MODEL_EXTERNAL_COMMAND_TIMEOUT_SECONDS", 3600),
         external_command_log_max_chars=_int_env("SCENARA_MODEL_EXTERNAL_COMMAND_LOG_MAX_CHARS", 20000),
         allow_shell_commands=_bool_env("SCENARA_MODEL_ALLOW_SHELL_COMMANDS", False),
+        deployment_feedback_secret=os.environ.get("SCENARA_MODEL_DEPLOYMENT_FEEDBACK_SECRET") or None,
+        deployment_feedback_max_age_seconds=_int_env("SCENARA_MODEL_DEPLOYMENT_FEEDBACK_MAX_AGE_SECONDS", 300),
     )

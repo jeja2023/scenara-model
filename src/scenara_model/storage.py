@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = "20260818_070_dataset_version_reference"
+SCHEMA_VERSION = "20260902_080_deployment_feedback"
 
 # 流水线任务终态：一旦进入不可回退。
 TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
@@ -226,6 +226,45 @@ class MetadataStore:
         )
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS deployment_feedback_events (
+                event_id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                capability TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                model_version TEXT NOT NULL,
+                package_sha256 TEXT NOT NULL,
+                from_status TEXT,
+                to_status TEXT NOT NULL,
+                event_created_at TEXT NOT NULL,
+                event_created_at_ms INTEGER NOT NULL,
+                body_sha256 TEXT NOT NULL,
+                processing_status TEXT NOT NULL,
+                event_json TEXT NOT NULL,
+                received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS deployment_feedback_state (
+                tenant_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                capability TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                model_version TEXT NOT NULL,
+                package_sha256 TEXT NOT NULL,
+                status TEXT NOT NULL,
+                event_id TEXT NOT NULL,
+                event_created_at TEXT NOT NULL,
+                event_created_at_ms INTEGER NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                PRIMARY KEY (tenant_id, project_id, capability)
+            )
+            """
+        )
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE,
@@ -261,6 +300,7 @@ class MetadataStore:
         connection.execute("CREATE INDEX IF NOT EXISTS idx_model_registry_stage ON model_registry(stage)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_release_approvals_model_id ON release_approvals(model_id)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_deployment_rollouts_model_id ON deployment_rollouts(model_id)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_deployment_feedback_events_scope ON deployment_feedback_events(tenant_id, project_id, capability, event_created_at_ms)")
         connection.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (?)", (SCHEMA_VERSION,))
 
     def _ensure_pipeline_job_columns(self, connection: Any) -> None:
@@ -1013,6 +1053,128 @@ class MetadataStore:
             ).fetchall()
         return [self._deployment_rollout_row(row) for row in rows]
 
+    def record_deployment_feedback_event(self, payload: dict[str, Any], *, body_sha256: str, occurred_at_ms: int) -> dict[str, Any]:
+        """Persist one signed Core event and replay its newest state atomically.
+
+        The Core outbox is at-least-once.  `event_id` therefore protects against
+        duplicate delivery, while the per tenant/project/capability snapshot keeps
+        a delayed older event from undoing a newer deployment state.
+        """
+        event_id = str(payload["event_id"])
+        scope = (str(payload["tenant_id"]), str(payload["project_id"]), str(payload["capability"]))
+        with self.connect() as connection:
+            existing = connection.execute("SELECT * FROM deployment_feedback_events WHERE event_id = ?", (event_id,)).fetchone()
+            if existing is not None:
+                event = self._deployment_feedback_event_row(existing)
+                if event["body_sha256"] != body_sha256:
+                    raise ValueError("event_id was already received with a different payload")
+                state = connection.execute(
+                    "SELECT * FROM deployment_feedback_state WHERE tenant_id = ? AND project_id = ? AND capability = ?", scope
+                ).fetchone()
+                return {
+                    "duplicate": True,
+                    "applied": event["processing_status"] == "applied",
+                    "event": event,
+                    "state": self._deployment_feedback_state_row(state) if state is not None else None,
+                }
+
+            current = connection.execute(
+                "SELECT * FROM deployment_feedback_state WHERE tenant_id = ? AND project_id = ? AND capability = ?", scope
+            ).fetchone()
+            current_state = self._deployment_feedback_state_row(current) if current is not None else None
+            processing_status = "applied"
+            if current_state is not None:
+                if occurred_at_ms <= int(current_state["event_created_at_ms"]):
+                    processing_status = "stale"
+                elif payload.get("from_status") != current_state["status"]:
+                    # Do not apply a transition whose declared predecessor differs
+                    # from the most recent accepted Core state.  It is persisted for
+                    # auditability but can never roll the local snapshot backwards.
+                    processing_status = "rejected_transition"
+
+            connection.execute(
+                """
+                INSERT INTO deployment_feedback_events
+                    (event_id, tenant_id, project_id, capability, model_id, model_version,
+                     package_sha256, from_status, to_status, event_created_at,
+                     event_created_at_ms, body_sha256, processing_status, event_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    *scope,
+                    str(payload["model_id"]),
+                    str(payload["version"]),
+                    str(payload["package_sha256"]),
+                    payload.get("from_status"),
+                    str(payload["to_status"]),
+                    str(payload["created_at"]),
+                    occurred_at_ms,
+                    body_sha256,
+                    processing_status,
+                    json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                ),
+            )
+            if processing_status == "applied":
+                connection.execute(
+                    """
+                    INSERT INTO deployment_feedback_state
+                        (tenant_id, project_id, capability, model_id, model_version,
+                         package_sha256, status, event_id, event_created_at, event_created_at_ms, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(tenant_id, project_id, capability) DO UPDATE SET
+                        model_id=excluded.model_id,
+                        model_version=excluded.model_version,
+                        package_sha256=excluded.package_sha256,
+                        status=excluded.status,
+                        event_id=excluded.event_id,
+                        event_created_at=excluded.event_created_at,
+                        event_created_at_ms=excluded.event_created_at_ms,
+                        updated_at=excluded.updated_at
+                    """,
+                    (
+                        *scope,
+                        str(payload["model_id"]),
+                        str(payload["version"]),
+                        str(payload["package_sha256"]),
+                        str(payload["to_status"]),
+                        event_id,
+                        str(payload["created_at"]),
+                        occurred_at_ms,
+                        utc_now_iso(),
+                    ),
+                )
+                current_state = self._deployment_feedback_state_row(
+                    connection.execute(
+                        "SELECT * FROM deployment_feedback_state WHERE tenant_id = ? AND project_id = ? AND capability = ?", scope
+                    ).fetchone()
+                )
+
+            event = self._deployment_feedback_event_row(
+                connection.execute("SELECT * FROM deployment_feedback_events WHERE event_id = ?", (event_id,)).fetchone()
+            )
+        return {
+            "duplicate": False,
+            "applied": processing_status == "applied",
+            "event": event,
+            "state": current_state,
+        }
+
+    def list_deployment_feedback_events(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM deployment_feedback_events ORDER BY received_at DESC, event_id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [self._deployment_feedback_event_row(row) for row in rows]
+
+    def get_deployment_feedback_state(self, tenant_id: str, project_id: str, capability: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM deployment_feedback_state WHERE tenant_id = ? AND project_id = ? AND capability = ?",
+                (tenant_id, project_id, capability),
+            ).fetchone()
+        return self._deployment_feedback_state_row(row) if row is not None else None
+
     def count_users(self) -> int:
         with self.connect() as connection:
             row = connection.execute("SELECT COUNT(*) AS count FROM users").fetchone()
@@ -1167,6 +1329,16 @@ class MetadataStore:
 
     @staticmethod
     def _deployment_rollout_row(row: sqlite3.Row) -> dict[str, Any]:
+        return dict(row)
+
+    @staticmethod
+    def _deployment_feedback_event_row(row: sqlite3.Row) -> dict[str, Any]:
+        value = dict(row)
+        value["payload"] = json.loads(value.pop("event_json"))
+        return value
+
+    @staticmethod
+    def _deployment_feedback_state_row(row: sqlite3.Row) -> dict[str, Any]:
         return dict(row)
 
     @staticmethod
@@ -1341,6 +1513,41 @@ class PostgresMetadataStore(MetadataStore):
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS deployment_feedback_events (
+                event_id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                capability TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                model_version TEXT NOT NULL,
+                package_sha256 TEXT NOT NULL,
+                from_status TEXT,
+                to_status TEXT NOT NULL,
+                event_created_at TEXT NOT NULL,
+                event_created_at_ms BIGINT NOT NULL,
+                body_sha256 TEXT NOT NULL,
+                processing_status TEXT NOT NULL,
+                event_json TEXT NOT NULL,
+                received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS deployment_feedback_state (
+                tenant_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                capability TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                model_version TEXT NOT NULL,
+                package_sha256 TEXT NOT NULL,
+                status TEXT NOT NULL,
+                event_id TEXT NOT NULL,
+                event_created_at TEXT NOT NULL,
+                event_created_at_ms BIGINT NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (tenant_id, project_id, capability)
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS pipeline_runs (
                 id BIGSERIAL PRIMARY KEY,
                 config_path TEXT NOT NULL,
@@ -1488,6 +1695,7 @@ class PostgresMetadataStore(MetadataStore):
         connection.execute("CREATE INDEX IF NOT EXISTS idx_model_registry_stage ON model_registry(stage)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_release_approvals_model_id ON release_approvals(model_id)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_deployment_rollouts_model_id ON deployment_rollouts(model_id)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_deployment_feedback_events_scope ON deployment_feedback_events(tenant_id, project_id, capability, event_created_at_ms)")
         connection.execute(
             "INSERT INTO schema_migrations (version) VALUES (?) ON CONFLICT(version) DO NOTHING",
             (SCHEMA_VERSION,),

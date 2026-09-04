@@ -24,6 +24,9 @@ services:
       SCENARA_MODEL_EXTERNAL_COMMAND_TIMEOUT_SECONDS: "3600"
       SCENARA_MODEL_EXTERNAL_COMMAND_LOG_MAX_CHARS: "20000"
       SCENARA_MODEL_ALLOW_SHELL_COMMANDS: "false"
+      # Core Webhook 订阅的 shared secret；未配置时 deployment-feedback 端点 fail-closed。
+      SCENARA_MODEL_DEPLOYMENT_FEEDBACK_SECRET: ${SCENARA_MODEL_DEPLOYMENT_FEEDBACK_SECRET:-}
+      SCENARA_MODEL_DEPLOYMENT_FEEDBACK_MAX_AGE_SECONDS: "300"
       # 生产环境必须设置 SCENARA_MODEL_AUTH_TOKEN（写接口鉴权），建议通过 .env 注入。
       # 未设置时首次启动会生成随机口令并打印到容器日志（docker compose logs）。
       SCENARA_MODEL_ADMIN_PASSWORD: ${SCENARA_MODEL_ADMIN_PASSWORD:-}

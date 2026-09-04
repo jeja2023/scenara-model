@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import json
 import sys
 import time
 from collections.abc import Iterator
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 import scenara_model.api as api
+from scenara_model.deployment_feedback import sign_webhook
 from scenara_model.storage import MetadataStore
 from scenara_model.utils import write_yaml
 
@@ -41,6 +44,52 @@ def _client() -> TestClient:
     return client
 
 
+def _deployment_feedback_body(*, event_id: str, created_at: str, from_status: str | None, to_status: str) -> bytes:
+    data = {
+        "schema_version": "1.0",
+        "event_id": event_id,
+        "tenant_id": "tenant-a",
+        "project_id": "project-a",
+        "model_id": "scenara.portrait.person-reid",
+        "version": "1.0.0",
+        "capability": "person_reid",
+        "runtime_model_id": "scenara.portrait/person_reid_v1",
+        "package_sha256": "a" * 64,
+        "action": "transition",
+        "from_status": from_status,
+        "to_status": to_status,
+        "reason": "qualification state changed",
+        "operator_id": "service-account:model-release-manager",
+        "audit_id": "audit-1",
+        "created_at": created_at,
+        "domain": "portrait",
+    }
+    envelope = {
+        "schema_version": "1.0",
+        "event_id": event_id,
+        "event_type": "model.deployment.changed",
+        "event_version": "1.0",
+        "occurred_at": created_at,
+        "producer": "scenara",
+        "tenant_id": "tenant-a",
+        "project_id": "project-a",
+        "request_id": "request-1",
+        "trace_id": "trace-1",
+        "data": data,
+    }
+    return json.dumps(envelope, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _deployment_feedback_headers(secret: str, body: bytes, event_id: str, timestamp: int | None = None) -> dict[str, str]:
+    value = int(time.time()) if timestamp is None else timestamp
+    return {
+        "Content-Type": "application/json",
+        "Scenara-Event-Id": event_id,
+        "Scenara-Timestamp": str(value),
+        "Scenara-Signature": sign_webhook(secret, value, body),
+    }
+
+
 def test_health_endpoint() -> None:
     client = _client()
 
@@ -52,6 +101,111 @@ def test_health_endpoint() -> None:
     assert "workspace" in body
     assert "metadata_db" in body
     assert "metadata_journal_mode" in body
+
+
+def test_deployment_feedback_verifies_signature_is_idempotent_and_replays_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    secret = "deployment-feedback-secret"
+    monkeypatch.setattr(api, "SETTINGS", replace(api.SETTINGS, deployment_feedback_secret=secret, deployment_feedback_max_age_seconds=300))
+    client = _client()
+    started = datetime.now(UTC).replace(microsecond=0)
+    first_id = "mde-001"
+    first_body = _deployment_feedback_body(
+        event_id=first_id,
+        created_at=started.isoformat().replace("+00:00", "Z"),
+        from_status=None,
+        to_status="approved",
+    )
+    first = client.post("/api/v1/deployment-feedback", content=first_body, headers=_deployment_feedback_headers(secret, first_body, first_id))
+    assert first.status_code == 202
+    assert first.json()["applied"] is True
+    assert first.json()["state"]["status"] == "approved"
+
+    duplicate = client.post("/api/v1/deployment-feedback", content=first_body, headers=_deployment_feedback_headers(secret, first_body, first_id))
+    assert duplicate.status_code == 200
+    assert duplicate.json()["duplicate"] is True
+
+    active_id = "mde-002"
+    active_body = _deployment_feedback_body(
+        event_id=active_id,
+        created_at=(started + timedelta(seconds=2)).isoformat().replace("+00:00", "Z"),
+        from_status="approved",
+        to_status="active",
+    )
+    active = client.post("/api/v1/deployment-feedback", content=active_body, headers=_deployment_feedback_headers(secret, active_body, active_id))
+    assert active.status_code == 202
+    assert active.json()["state"]["status"] == "active"
+
+    stale_id = "mde-003"
+    stale_body = _deployment_feedback_body(
+        event_id=stale_id,
+        created_at=(started + timedelta(seconds=1)).isoformat().replace("+00:00", "Z"),
+        from_status="approved",
+        to_status="validated",
+    )
+    stale = client.post("/api/v1/deployment-feedback", content=stale_body, headers=_deployment_feedback_headers(secret, stale_body, stale_id))
+    assert stale.status_code == 202
+    assert stale.json()["processing_status"] == "stale"
+    assert stale.json()["state"]["status"] == "active"
+
+    rollback_id = "mde-004"
+    rollback_body = _deployment_feedback_body(
+        event_id=rollback_id,
+        created_at=(started + timedelta(seconds=3)).isoformat().replace("+00:00", "Z"),
+        from_status="active",
+        to_status="retired",
+    )
+    rollback = client.post(
+        "/api/v1/deployment-feedback",
+        content=rollback_body,
+        headers=_deployment_feedback_headers(secret, rollback_body, rollback_id),
+    )
+    assert rollback.status_code == 202
+    assert rollback.json()["applied"] is True
+    assert rollback.json()["state"]["status"] == "retired"
+
+    conflicting_id = "mde-005"
+    conflicting_body = _deployment_feedback_body(
+        event_id=conflicting_id,
+        created_at=(started + timedelta(seconds=4)).isoformat().replace("+00:00", "Z"),
+        from_status="active",
+        to_status="approved",
+    )
+    conflicting = client.post(
+        "/api/v1/deployment-feedback",
+        content=conflicting_body,
+        headers=_deployment_feedback_headers(secret, conflicting_body, conflicting_id),
+    )
+    assert conflicting.status_code == 202
+    assert conflicting.json()["accepted"] is False
+    assert conflicting.json()["processing_status"] == "rejected_transition"
+
+    events = client.get("/api/v1/deployment-feedback").json()["events"]
+    assert {event["event_id"] for event in events} == {first_id, active_id, stale_id, rollback_id, conflicting_id}
+
+
+def test_deployment_feedback_rejects_bad_or_expired_signatures(monkeypatch: pytest.MonkeyPatch) -> None:
+    secret = "deployment-feedback-secret"
+    monkeypatch.setattr(api, "SETTINGS", replace(api.SETTINGS, deployment_feedback_secret=secret, deployment_feedback_max_age_seconds=30))
+    client = _client()
+    event_id = "mde-invalid"
+    body = _deployment_feedback_body(
+        event_id=event_id,
+        created_at=datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        from_status=None,
+        to_status="approved",
+    )
+    bad = client.post(
+        "/api/v1/deployment-feedback",
+        content=body,
+        headers={**_deployment_feedback_headers(secret, body, event_id), "Scenara-Signature": "v1=bad"},
+    )
+    assert bad.status_code == 401
+    expired = client.post(
+        "/api/v1/deployment-feedback",
+        content=body,
+        headers=_deployment_feedback_headers(secret, body, event_id, timestamp=int(time.time()) - 31),
+    )
+    assert expired.status_code == 401
 
 
 def test_health_does_not_run_sqlite_pragma_for_postgres(monkeypatch: pytest.MonkeyPatch) -> None:

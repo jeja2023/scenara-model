@@ -15,12 +15,19 @@ def test_local_object_store_rejects_escaping_keys(workspace_tmp_path: Path) -> N
     with pytest.raises(ValueError):
         store.put_file(source, "../escape.txt")
 
+
 class FakeS3Client:
     def __init__(self) -> None:
         self.uploads: list[tuple[str, str, str]] = []
 
     def upload_file(self, source: str, bucket: str, key: str, ExtraArgs: dict[str, str]) -> None:  # noqa: N803
         self.uploads.append((source, bucket, key))
+
+    def get_object(self, *, Bucket: str, Key: str) -> dict[str, object]:  # noqa: N803
+        raise AssertionError(f"unexpected get_object call: {Bucket}/{Key}")
+
+    def delete_object(self, *, Bucket: str, Key: str) -> None:  # noqa: N803
+        raise AssertionError(f"unexpected delete_object call: {Bucket}/{Key}")
 
 
 def test_s3_object_store_uploads_with_prefix(workspace_tmp_path: Path) -> None:

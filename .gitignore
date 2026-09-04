@@ -4,6 +4,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+.venv-*/
 venv/
 env/
 node_modules/
@@ -33,6 +34,7 @@ artifacts/*.txt
 artifacts/*.log
 artifacts/test_runs/
 experiments/local_runs/
+third_party/
 
 # 在 Git 中保留轻量描述文件
 !artifacts/packages/.gitkeep

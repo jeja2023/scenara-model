@@ -1,0 +1,134 @@
+# FastReID production pipeline template.  It deliberately has no synthetic
+# fallback: all three stages must run against the separately provisioned,
+# revision-pinned FastReID environment and produce fresh evidence.
+experiment:
+  id: person_reid_fastreid_001
+  task: reid
+  project: cross_camera_tracking
+  status: planned
+  seed: 42
+
+dataset:
+  # Replace these paths and this immutable reference only when the authorised
+  # Dataset Version has been published by scenara-data.
+  name: person_reid_dataset
+  dataset_id: person_reid_dataset_v1.0.0
+  version: 1.0.0
+  train_manifest: data/manifests/person_reid_train_v1.jsonl
+  val_manifest: data/manifests/person_reid_val_v1.jsonl
+  test_manifest: data/manifests/person_reid_test_v1.jsonl
+  reference_manifest_path: data/manifests/person_reid_train_v1.jsonl
+  reference:
+    schema_version: "1.0"
+    dataset_id: person_reid_dataset_v1.0.0
+    version: 1.0.0
+    manifest_uri: s3://replace-with-published-dataset/person_reid_train_v1.jsonl#sha256=0000000000000000000000000000000000000000000000000000000000000000
+    manifest_sha256: 0000000000000000000000000000000000000000000000000000000000000000
+    lineage_refs:
+      - https://replace-with-published-lineage#sha256=1111111111111111111111111111111111111111111111111111111111111111
+    authorization_id: replace-with-authorized-dataset-grant
+    authorized_consumer_repository_ids:
+      - scenara-model
+    created_at: "2026-09-02T00:00:00Z"
+    domain: portrait
+    annotation_schema_ids:
+      - scenara.portrait.surveillance-review.v1
+
+model:
+  architecture: resnet50_ibn
+  version: 1.0.0
+  input_size: [256, 128]
+
+labels:
+  - identity
+
+training:
+  adapter: fastreid
+  command_cwd: .
+  framework:
+    name: fastreid
+    repository: https://github.com/JDAI-CV/fast-reid.git
+    revision: c9bc3ceb2f7a6438b62fb515ea3df6d1e999e95d
+    environment_lock: deploy/training/fastreid-environment.lock.json
+    environment_lock_sha256: e9862fc02b2ea438cbd659d0597fc8fa2c6fba5198bc74765fd96f2baa7e30a5
+  preflight_command:
+    - python
+    - scripts/fastreid/runtime_check.py
+  data_prepare_command:
+    - python
+    - scripts/fastreid/prepare_dataset.py
+    - --train-manifest
+    - data/manifests/person_reid_train_v1.jsonl
+    - --test-manifest
+    - data/manifests/person_reid_test_v1.jsonl
+    - --output
+    - artifacts/fastreid-data/person_reid
+    - --overwrite
+  prepared_dataset_root: artifacts/fastreid-data/person_reid
+  command:
+    - python
+    - scripts/fastreid/run.py
+    - train
+    - --config-file
+    - configs/fastreid/person_reid_r50_ibn.yml
+    - --dataset-root
+    - artifacts/fastreid-data/person_reid
+    - --output
+    - experiments/local_runs/person_reid_fastreid_001/train
+    - --num-gpus
+    - "1"
+  produced_checkpoint: experiments/local_runs/person_reid_fastreid_001/train/model_final.pth
+
+export:
+  adapter: fastreid
+  artifact_name: person_reid_resnet50_ibn_v1.0.0_fp32.onnx
+  command_cwd: .
+  command:
+    - python
+    - scripts/fastreid/export_onnx.py
+    - --config-file
+    - configs/fastreid/person_reid_r50_ibn.yml
+    - --weights
+    - experiments/local_runs/person_reid_fastreid_001/train/model_final.pth
+    - --output
+    - experiments/local_runs/person_reid_fastreid_001/train/model_final.onnx
+  produced_onnx: experiments/local_runs/person_reid_fastreid_001/train/model_final.onnx
+
+evaluation:
+  adapter: fastreid
+  protocol: fastreid-cmc-map-v1
+  manifest: data/manifests/person_reid_test_v1.jsonl
+  command_cwd: .
+  command:
+    - python
+    - scripts/fastreid/run.py
+    - evaluate
+    - --config-file
+    - configs/fastreid/person_reid_r50_ibn.yml
+    - --dataset-root
+    - artifacts/fastreid-data/person_reid
+    - --output
+    - experiments/local_runs/person_reid_fastreid_001/eval
+    - --weights
+    - experiments/local_runs/person_reid_fastreid_001/train/model_final.pth
+    - --metrics-output
+    - experiments/local_runs/person_reid_fastreid_001/eval/metrics.json
+  produced_metrics: experiments/local_runs/person_reid_fastreid_001/eval/metrics.json
+
+package:
+  profile: production
+  # Add the model-weight license document's immutable source URL, SHA-256 and
+  # business approval reference before packaging; omission is a hard gate.
+  # license:
+  #   name: <license-name>
+  #   source_url: <immutable-license-url>
+  #   sha256: <64-lowercase-hex-digest>
+  #   approval_reference: <legal-or-procurement-record>
+  examples_dir: data/model_examples/person_reid_resnet50_ibn_v1.0.0_fp32
+  metric_thresholds:
+    map: 0.50
+    rank1: 0.70
+    rank5: 0.85
+    rank10: 0.90
+  limitations:
+    - Validate cameras, crowd density, occlusion, low light, and demographic performance before any release.
