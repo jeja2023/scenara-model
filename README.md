@@ -1,10 +1,10 @@
-# Scenara Model
+# scenara model
 
-当前版本：`1.0.0-dev.4`。完整变更见 [更新日志.md](更新日志.md)，更新说明见 [docs/发布说明_1.0.0-dev.4.md](docs/发布说明_1.0.0-dev.4.md)。
+当前版本：`1.0.0-dev.5`。完整变更见 [更新日志.md](更新日志.md)，更新说明见 [docs/发布说明_1.0.0-dev.5.md](docs/发布说明_1.0.0-dev.5.md)。
 
-`scenara-model` 是景枢模型平台的责任仓库，负责实验、训练任务、模型评估、模型版本、模型注册和不可变 Model Package 发布。训练数据只引用 `scenara-data` 发布的不可变 Dataset Version；生产准入、激活、流量切换和回滚由 `scenara` 负责。
+`scenara-model` 是 scenara model 责任仓库，负责实验、训练任务、模型评估、模型版本、模型注册和不可变 Model Package 发布。训练数据只引用 `scenara-data` 发布的不可变 Dataset Version；生产准入、激活、流量切换和回滚由 `scenara` 负责。
 
-当前成熟度为 `seed`。仓库由 `vision-model-lab` 迁移而来，已有训练与制品能力可以继续验证，但共享 IAM、统一 Console 和正式跨仓库契约接入尚未完成，因此不得标记为 `production_ready`。责任团队为 Scenara Model，迁移门禁和临时例外见 [ADR-0001](docs/adr/0001-仓库更名与共享控制面迁移.md)。
+当前成熟度为 `seed`。仓库由 `vision-model-lab` 迁移而来，已有训练与制品能力可以继续验证，但共享 IAM、统一 Console 和正式跨仓库契约接入尚未完成，因此不得标记为 `production_ready`。责任团队为 scenara model，迁移门禁和临时例外见 [ADR-0001](docs/adr/0001-仓库更名与共享控制面迁移.md)。
 
 当前未完成项和验收顺序见 [剩余任务计划](docs/剩余任务计划.md)。
 

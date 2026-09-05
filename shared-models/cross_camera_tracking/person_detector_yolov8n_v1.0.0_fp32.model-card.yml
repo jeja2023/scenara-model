@@ -42,14 +42,14 @@ provenance:
   experiment_id: person_detector_20260603_001
   config_path: configs/experiments/detection_yolo_baseline.yml
   config_sha256: 2c384d60f5fbfae22081d803dda3293222b4e1f72570f321c1ca1e780207dec9
-  code_revision: e900d8708c3e17f9a6cf1a2917de8a30e02d7277
+  code_revision: 3464b69f72234d3e24dbc58d5b77e29c55de2f38
   training:
     adapter: detection_yolo_baseline
     command: null
     checkpoint: null
   export:
     onnx_source: synthetic_baseline
-    report: experiments/local_runs/person_detector_20260603_001/export/export.report.json
+    report: null
   evaluation:
     metrics_source: declared
-    report: experiments/local_runs/person_detector_20260603_001/eval/eval.report.json
+    report: null

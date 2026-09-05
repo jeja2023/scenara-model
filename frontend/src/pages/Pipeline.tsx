@@ -1,5 +1,21 @@
-import { Boxes, Play, RotateCcw, Search, XCircle } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Activity,
+  AlertCircle,
+  Boxes,
+  Clock,
+  Download,
+  FileCode,
+  FileSearch,
+  Play,
+  PlaySquare,
+  RotateCcw,
+  Search,
+  Sliders,
+  Terminal,
+  UploadCloud,
+  XCircle
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   analyzeErrors,
   artifactDownloadUrl,
@@ -15,15 +31,19 @@ import {
   runPipeline,
   uploadArtifact
 } from "../api";
+import { Pagination } from "../components/Pagination";
 import { StatusBadge } from "../components/StatusBadge";
+import { TabBar, type TabItem } from "../components/TabBar";
+import { Tooltip } from "../components/Tooltip";
+import { zhAction, zhMetricsSource, zhStatus, zhStream } from "../i18n";
 import type { AdapterInfo, AuditEvent, ErrorAnalysis, PipelineArtifact, PipelineJobLog, PipelineJobRecord, PipelineRunRecord } from "../types";
-import { zhStatus } from "../i18n";
+import { formatBeijingTime } from "../utils/date";
 
 const configOptions = [
-  { label: "YOLO 检测基线", value: "configs/experiments/detection_yolo_baseline.yml" },
-  { label: "ReID 基线", value: "configs/experiments/reid_baseline.yml" },
-  { label: "分类基线", value: "configs/experiments/classification_baseline.yml" },
-  { label: "分割基线", value: "configs/experiments/segmentation_baseline.yml" }
+  { label: "YOLO 目标检测基线 (detection_yolo_baseline.yml)", value: "configs/experiments/detection_yolo_baseline.yml" },
+  { label: "ReID 行人重识别基线 (reid_baseline.yml)", value: "configs/experiments/reid_baseline.yml" },
+  { label: "图像分类基线 (classification_baseline.yml)", value: "configs/experiments/classification_baseline.yml" },
+  { label: "语义分割基线 (segmentation_baseline.yml)", value: "configs/experiments/segmentation_baseline.yml" }
 ];
 
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
@@ -44,27 +64,7 @@ function metricsText(run?: PipelineRunRecord) {
     .join(" / ");
 }
 
-function metricsSourceLabel(run?: PipelineRunRecord) {
-  const source = run?.report?.evaluation?.metrics_source;
-  if (source === "measured") {
-    return "实测";
-  }
-  if (source === "declared") {
-    return "自报";
-  }
-  if (source === "baseline") {
-    return "基线";
-  }
-  return "";
-}
-
 type StatusTone = "ok" | "warn" | "neutral" | "fail";
-
-type JobDetailField = {
-  label: string;
-  value: string;
-  mono?: boolean;
-};
 
 function jobStatusTone(status: string): StatusTone {
   if (status === "completed") {
@@ -113,26 +113,6 @@ function jobCancellationNote(job: PipelineJobRecord) {
   return "";
 }
 
-function jobDetailFields(job: PipelineJobRecord): JobDetailField[] {
-  const fields: Array<JobDetailField | null> = [
-    { label: "任务编号", value: `#${job.id}` },
-    { label: "配置路径", value: job.config_path, mono: true },
-    { label: "开始时间", value: job.started_at ?? job.created_at },
-    { label: "完成时间", value: job.completed_at ?? "-" },
-    job.cancelled_at || job.status === "cancelled" ? { label: "取消时间", value: job.cancelled_at ?? "-" } : null,
-    job.result?.cancelled_stage ? { label: "取消阶段", value: pipelineStageLabel(job.result.cancelled_stage) } : null,
-    job.result?.cancelled_reason ? { label: "取消原因", value: cancellationReasonLabel(job.result.cancelled_reason) } : null,
-    job.result?.failed_stage ? { label: "失败阶段", value: pipelineStageLabel(job.result.failed_stage as string) } : null,
-    { label: "错误", value: job.error ?? "-" }
-  ];
-  return fields.filter((field): field is JobDetailField => field !== null);
-}
-
-function detailSummary(detail: Record<string, unknown>) {
-  const value = JSON.stringify(detail);
-  return value.length > 180 ? `${value.slice(0, 180)}...` : value;
-}
-
 function humanSize(size?: number | null) {
   if (!size && size !== 0) {
     return "-";
@@ -150,7 +130,16 @@ function logKey(log: PipelineJobLog) {
   return `${log.id}-${log.stream}-${log.created_at}`;
 }
 
+const pipelineTabs: TabItem[] = [
+  { key: "tasks", label: "任务调度与监视器", icon: <Clock size={15} /> },
+  { key: "launch", label: "启动流水线与产物", icon: <PlaySquare size={15} /> },
+  { key: "history", label: "运行历史与指标", icon: <Activity size={15} /> },
+  { key: "audit", label: "误差分析与审计日志", icon: <FileSearch size={15} /> }
+];
+
 export function Pipeline({ runs, onRefresh }: PipelineProps) {
+  const [activeTab, setActiveTab] = useState("tasks");
+
   const [configPath, setConfigPath] = useState(configOptions[0].value);
   const [withPackage, setWithPackage] = useState(true);
   const [message, setMessage] = useState("");
@@ -162,9 +151,19 @@ export function Pipeline({ runs, onRefresh }: PipelineProps) {
   const [selectedJob, setSelectedJob] = useState<PipelineJobRecord | null>(null);
   const [errorPath, setErrorPath] = useState("data/manifests/example_train_v1.jsonl");
   const [analysis, setAnalysis] = useState<ErrorAnalysis | null>(null);
+
+  // 分页状态
+  const [jobPage, setJobPage] = useState(1);
+  const [jobPageSize, setJobPageSize] = useState(10);
+
+  const [runPage, setRunPage] = useState(1);
+  const [runPageSize, setRunPageSize] = useState(10);
+
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditPageSize, setAuditPageSize] = useState(10);
+
   const jobDetailRequestRef = useRef(0);
   const latest = runs[0];
-  const latestJob = jobs[0];
   const hasActiveJob = useMemo(() => jobs.some((job) => !terminalStatuses.has(job.status)), [jobs]);
 
   async function refreshJobs() {
@@ -177,7 +176,6 @@ export function Pipeline({ runs, onRefresh }: PipelineProps) {
   }
 
   useEffect(() => {
-    // adapters 与审计事件只需挂载时拉一次，不参与高频轮询。
     void listAdapters()
       .then((response) => setAdapters(response.adapters))
       .catch(() => setAdapters([]));
@@ -199,7 +197,6 @@ export function Pipeline({ runs, onRefresh }: PipelineProps) {
       setSelectedJob(null);
       return;
     }
-    // 竞态保护：只接受最后一次请求的响应，避免慢响应覆盖新选中任务。
     const requestId = ++jobDetailRequestRef.current;
     void getPipelineJob(selectedJobId)
       .then((response) => {
@@ -218,7 +215,6 @@ export function Pipeline({ runs, onRefresh }: PipelineProps) {
     if (!hasActiveJob) {
       return;
     }
-    // 轮询只打轻量任务端点；全库包扫描仅在任务完结时刷新一次。
     const timer = window.setInterval(() => {
       void refreshJobs();
     }, 1500);
@@ -236,14 +232,15 @@ export function Pipeline({ runs, onRefresh }: PipelineProps) {
 
   async function startPipeline() {
     setBusy(true);
-    setMessage("正在提交…");
+    setMessage("正在提交调度流水线…");
     try {
       const response = await runPipeline({ config_path: configPath, package: withPackage, async_run: true });
       if (response.job) {
         setSelectedJobId(response.job.id);
-        setMessage(`任务 #${response.job.id} 已入队`);
+        setMessage(`流水线任务 #${response.job.id} 已进入执行队列`);
+        setActiveTab("tasks");
       } else {
-        setMessage("提交完成");
+        setMessage("调度提交完成");
       }
       await refreshJobs();
       onRefresh();
@@ -256,10 +253,10 @@ export function Pipeline({ runs, onRefresh }: PipelineProps) {
 
   async function buildPackage() {
     setBusy(true);
-    setMessage("正在打包…");
+    setMessage("正在打包生成交付物…");
     try {
       await createPackage({ config_path: configPath });
-      setMessage("模型包已生成");
+      setMessage("模型交付包已顺利生成");
       onRefresh();
     } catch (error) {
       setMessage(errorMessage(error));
@@ -273,10 +270,10 @@ export function Pipeline({ runs, onRefresh }: PipelineProps) {
       return;
     }
     setBusy(true);
-    setMessage("上传中…");
+    setMessage("正在上传产物文件…");
     try {
       await uploadArtifact(file);
-      setMessage("上传完成");
+      setMessage("产物文件上传成功");
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
@@ -313,228 +310,575 @@ export function Pipeline({ runs, onRefresh }: PipelineProps) {
     }
   }
 
-  const groupedAdapters = useMemo(
-    () => adapters.map((adapter) => `${adapter.task}:${adapter.name}`).join(" / "),
-    [adapters]
-  );
   const selectedJobCancellationNote = selectedJob ? jobCancellationNote(selectedJob) : "";
-  const selectedJobDetails = selectedJob ? jobDetailFields(selectedJob) : [];
+
+  // 分页切片计算
+  const paginatedJobs = useMemo(() => {
+    const start = (jobPage - 1) * jobPageSize;
+    return jobs.slice(start, start + jobPageSize);
+  }, [jobs, jobPage, jobPageSize]);
+
+  const paginatedRuns = useMemo(() => {
+    const start = (runPage - 1) * runPageSize;
+    return runs.slice(start, start + runPageSize);
+  }, [runs, runPage, runPageSize]);
+
+  const paginatedEvents = useMemo(() => {
+    const start = (auditPage - 1) * auditPageSize;
+    return events.slice(start, start + auditPageSize);
+  }, [events, auditPage, auditPageSize]);
 
   return (
     <div className="page-grid">
-      <section className="panel">
-        <div className="panel-header">
-          <h1>启动训练流水线</h1>
-          <button className="primary-button" onClick={startPipeline} title="启动流水线" disabled={busy}>
-            <Play size={17} />
-            <span>启动</span>
-          </button>
-        </div>
-        <div className="form-grid">
-          <label>
-            <span>配置</span>
-            <select value={configPath} onChange={(event) => setConfigPath(event.target.value)} disabled={busy}>
-              {configOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="check-row">
-            <input type="checkbox" checked={withPackage} onChange={(event) => setWithPackage(event.target.checked)} disabled={busy} />
-            <span>完成后打包</span>
-          </label>
-        </div>
-        <div className="summary-line">
-          <span>适配器：{groupedAdapters || "-"}</span>
-          {latestJob ? <StatusBadge tone={jobStatusTone(latestJob.status)} label={zhStatus(latestJob.status)} /> : null}
-        </div>
-        {message ? <p className="inline-message">{message}</p> : null}
-      </section>
+      {/* 选项卡栏 */}
+      <TabBar
+        tabs={pipelineTabs.map((t) => (t.key === "tasks" ? { ...t, badge: jobs.length } : t))}
+        activeKey={activeTab}
+        onChange={setActiveTab}
+      />
 
-      <section className="panel">
-        <div className="panel-header">
-          <h1>模型包操作</h1>
-          <button className="primary-button" onClick={buildPackage} title="生成模型包" disabled={busy}>
-            <Boxes size={17} />
-            <span>打包</span>
-          </button>
-        </div>
-        <div className="form-grid single">
-          <label>
-            <span>上传产物</span>
-            <input type="file" onChange={(event) => void submitUpload(event.target.files?.item(0))} disabled={busy} />
-          </label>
-        </div>
-      </section>
-
-      <section className="panel">
-        <h1>任务</h1>
-        <div className="table compact-table">
-          <div className="table-row job-row table-head">
-            <span>编号</span>
-            <span>配置</span>
-            <span>状态</span>
-            <span>操作</span>
-          </div>
-          {jobs.slice(0, 8).map((job) => (
-            <div
-              className={`table-row job-row ${selectedJobId === job.id ? "selected-row" : ""}`}
-              key={job.id}
-              role="button"
-              tabIndex={0}
-              aria-selected={selectedJobId === job.id}
-              onClick={() => setSelectedJobId(job.id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  setSelectedJobId(job.id);
-                }
-              }}
-            >
-              <span>#{job.id}</span>
-              <span className="mono">{job.config_path}</span>
-              <StatusBadge tone={jobStatusTone(job.status)} label={zhStatus(job.status)} />
-              <span className="row-actions">
-                {cancellableStatuses.has(job.status) ? (
-                  <button className="icon-button" onClick={(event) => { event.stopPropagation(); void cancelJob(job.id); }} title="取消任务">
-                    <XCircle size={16} />
-                  </button>
-                ) : null}
-                {job.status === "failed" || job.status === "cancelled" ? (
-                  <button className="icon-button" onClick={(event) => { event.stopPropagation(); void retryJob(job.id); }} title="重新运行">
-                    <RotateCcw size={16} />
-                  </button>
-                ) : null}
-              </span>
+      {/* Tab 1: 任务调度与监视器 (Master-Detail 工作台) */}
+      {activeTab === "tasks" ? (
+        <div className="grid-2col-balanced">
+          {/* 左侧：任务队列表格 */}
+          <section className="panel">
+            <div className="panel-header">
+              <div className="panel-header-left">
+                <Clock size={18} color="#176b87" />
+                <h1>流水线任务队列</h1>
+                <span className="panel-count-tag">共 {jobs.length} 项</span>
+              </div>
+              {hasActiveJob ? <span className="badge warn">任务执行中</span> : <span className="badge ok">队列就绪</span>}
             </div>
-          ))}
-          {!jobs.length ? <div className="empty-row">暂无任务</div> : null}
-        </div>
-      </section>
 
-      <section className="panel wide-panel">
-        <div className="panel-header">
-          <h1>任务详情</h1>
-          {selectedJob ? <StatusBadge tone={jobStatusTone(selectedJob.status)} label={zhStatus(selectedJob.status)} /> : null}
-        </div>
-        {selectedJob ? (
-          <>
-            {selectedJobCancellationNote ? <p className="inline-message">{selectedJobCancellationNote}</p> : null}
-            <div className="detail-grid">
-              {selectedJobDetails.map((field) => (
-                <Fragment key={field.label}>
-                  <span>{field.label}</span>
-                  <strong className={field.mono ? "mono" : undefined}>{field.value}</strong>
-                </Fragment>
-              ))}
+            <div className="ui-table-container">
+              <table className="ui-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: "55px", textAlign: "center" }}>序号</th>
+                    <th style={{ width: "65px" }}>编号</th>
+                    <th style={{ width: "40%" }}>配置模板</th>
+                    <th style={{ width: "23%" }}>执行状态</th>
+                    <th style={{ width: "20%", textAlign: "center" }}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedJobs.map((job, index) => {
+                    const isSelected = selectedJobId === job.id;
+                    const configName = job.config_path.replace("configs/experiments/", "");
+                    const seqNumber = (jobPage - 1) * jobPageSize + index + 1;
+                    return (
+                      <tr
+                        key={job.id}
+                        className={isSelected ? "selected" : ""}
+                        onClick={() => setSelectedJobId(job.id)}
+                        style={{ cursor: "pointer" }}
+                      >
+                        <td style={{ textAlign: "center", color: "#64748b", fontWeight: 500 }}>
+                          {seqNumber}
+                        </td>
+                        <td style={{ fontWeight: 600, color: "#176b87" }}>#{job.id}</td>
+                        <td>
+                          <Tooltip content={job.config_path}>
+                            <span className="cell-ellipsis mono">{configName}</span>
+                          </Tooltip>
+                        </td>
+                        <td>
+                          <StatusBadge tone={jobStatusTone(job.status)} label={zhStatus(job.status)} />
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <span className="row-actions" style={{ justifyContent: "center" }}>
+                            {cancellableStatuses.has(job.status) ? (
+                              <button
+                                type="button"
+                                className="table-action-btn danger"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void cancelJob(job.id);
+                                }}
+                              >
+                                <XCircle size={13} />
+                                <span>取消</span>
+                              </button>
+                            ) : null}
+                            {job.status === "failed" || job.status === "cancelled" ? (
+                              <button
+                                type="button"
+                                className="table-action-btn primary"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void retryJob(job.id);
+                                }}
+                              >
+                                <RotateCcw size={13} />
+                                <span>重试</span>
+                              </button>
+                            ) : null}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!paginatedJobs.length ? (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: "center", padding: "30px 12px", color: "#8a99ad" }}>
+                        暂无任何调度任务，请点击「启动流水线与产物」开始训练
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+
+              {jobs.length > 0 ? (
+                <Pagination
+                  currentPage={jobPage}
+                  pageSize={jobPageSize}
+                  total={jobs.length}
+                  onPageChange={setJobPage}
+                  onPageSizeChange={setJobPageSize}
+                />
+              ) : null}
             </div>
-            <div className="detail-columns">
+          </section>
+
+          {/* 右侧：任务运行监视器 */}
+          <section className="panel">
+            <div className="panel-header">
+              <div className="panel-header-left">
+                <Terminal size={18} color="#176b87" />
+                <h1>任务监视器 {selectedJob ? `(#${selectedJob.id})` : ""}</h1>
+              </div>
+              {selectedJob ? (
+                <StatusBadge tone={jobStatusTone(selectedJob.status)} label={zhStatus(selectedJob.status)} />
+              ) : (
+                <span className="panel-count-tag">请选择任务</span>
+              )}
+            </div>
+
+            {selectedJob ? (
               <div>
-                <h2>任务日志</h2>
-                <div className="log-list">
-                  {(selectedJob.logs ?? []).slice(-12).map((log) => (
-                    <div className="log-row" key={logKey(log)}>
-                      <span>{log.stream}</span>
-                      <strong>{log.message}</strong>
-                      <code>{detailSummary(log.detail)}</code>
+                {selectedJobCancellationNote ? (
+                  <div className="issue warn" style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <AlertCircle size={15} color="#d97706" />
+                      <strong>取消状态通知</strong>
                     </div>
-                  ))}
-                  {!(selectedJob.logs ?? []).length ? <div className="empty-row">暂无日志</div> : null}
+                    <span>{selectedJobCancellationNote}</span>
+                  </div>
+                ) : null}
+
+                {/* 元信息卡片网格 */}
+                <div className="detail-grid">
+                  <div className="detail-card-item">
+                    <span>配置模板文件</span>
+                    <Tooltip content={selectedJob.config_path}>
+                      <strong className="mono cell-ellipsis">{selectedJob.config_path}</strong>
+                    </Tooltip>
+                  </div>
+                  <div className="detail-card-item">
+                    <span>开始时间 (东八区)</span>
+                    <strong>{formatBeijingTime(selectedJob.started_at ?? selectedJob.created_at)}</strong>
+                  </div>
+                  <div className="detail-card-item">
+                    <span>完成时间 (东八区)</span>
+                    <strong>{formatBeijingTime(selectedJob.completed_at)}</strong>
+                  </div>
+                  {selectedJob.cancelled_at ? (
+                    <div className="detail-card-item">
+                      <span>取消时间 (东八区)</span>
+                      <strong>{formatBeijingTime(selectedJob.cancelled_at)}</strong>
+                    </div>
+                  ) : null}
+                  {selectedJob.result?.cancelled_reason ? (
+                    <div className="detail-card-item">
+                      <span>取消原因</span>
+                      <strong>{cancellationReasonLabel(selectedJob.result.cancelled_reason)}</strong>
+                    </div>
+                  ) : null}
+                  {selectedJob.error ? (
+                    <div className="detail-card-item" style={{ borderLeft: "3px solid #b91c1c" }}>
+                      <span>异常错误信息</span>
+                      <strong style={{ color: "#b91c1c" }}>{selectedJob.error}</strong>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* 下方分栏：日志与产物 */}
+                <div className="detail-columns">
+                  <div>
+                    <h2>
+                      <Terminal size={15} /> 实时执行日志 ({selectedJob.logs?.length ?? 0})
+                    </h2>
+                    <div className="log-list">
+                      {(selectedJob.logs ?? []).slice(-30).map((log) => (
+                        <div className="log-row" key={logKey(log)}>
+                          <span>[{zhStream(log.stream)}]</span>
+                          <Tooltip content={log.message}>
+                            <strong className="cell-ellipsis">{log.message}</strong>
+                          </Tooltip>
+                          <code className="cell-ellipsis">{JSON.stringify(log.detail)}</code>
+                        </div>
+                      ))}
+                      {!(selectedJob.logs ?? []).length ? (
+                        <div className="empty-row" style={{ color: "#64748b", background: "transparent" }}>
+                          暂无实时控制台日志
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h2>
+                      <Download size={15} /> 生成产物归档 ({selectedJob.artifacts?.length ?? 0})
+                    </h2>
+                    <div className="artifact-list">
+                      {(selectedJob.artifacts ?? []).map((artifact: PipelineArtifact) => (
+                        <a
+                          key={artifact.id}
+                          href={artifactDownloadUrl(artifact.id)}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            void downloadArtifact(artifact.id, artifact.name);
+                          }}
+                          download
+                        >
+                          <div className="artifact-info">
+                            <Tooltip content={artifact.name}>
+                              <strong className="cell-ellipsis">{artifact.name}</strong>
+                            </Tooltip>
+                            <span>{artifact.kind}</span>
+                          </div>
+                          <span className="artifact-size-tag">{humanSize(artifact.size)}</span>
+                        </a>
+                      ))}
+                      {!(selectedJob.artifacts ?? []).length ? (
+                        <div className="empty-row">尚未生成产物文件</div>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
               </div>
+            ) : (
+              <div className="empty-row" style={{ minHeight: 280 }}>
+                <FileCode size={32} color="#94a3b8" />
+                <strong style={{ marginTop: 8, color: "#475569" }}>未选中任何流水线任务</strong>
+                <span>请在左侧任务队列中点击任意行，实时监视日志与生成产物。</span>
+              </div>
+            )}
+          </section>
+        </div>
+      ) : null}
+
+      {/* Tab 2: 启动流水线与产物工具 */}
+      {activeTab === "launch" ? (
+        <div className="grid-2col-balanced">
+          <section className="panel">
+            <div className="panel-header">
+              <div className="panel-header-left">
+                <PlaySquare size={18} color="#176b87" />
+                <h1>启动训练流水线</h1>
+              </div>
+              <span className="panel-count-tag">全自动闭环</span>
+            </div>
+
+            <div className="form-grid single" style={{ gap: 14 }}>
+              <label>
+                <span>实验模板配置</span>
+                <select value={configPath} onChange={(e) => setConfigPath(e.target.value)} disabled={busy}>
+                  {configOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="check-row" style={{ maxWidth: "fit-content" }}>
+                <input
+                  type="checkbox"
+                  checked={withPackage}
+                  onChange={(e) => setWithPackage(e.target.checked)}
+                  disabled={busy}
+                />
+                <span>评估通过后自动打包生成交付物</span>
+              </label>
+
               <div>
-                <h2>产物</h2>
-                <div className="artifact-list">
-                  {(selectedJob.artifacts ?? []).map((artifact) => (
-                    <a
-                      key={artifact.id}
-                      href={artifactDownloadUrl(artifact.id)}
-                      title={artifact.path ?? artifact.uri ?? artifact.name}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        void downloadArtifact(artifact.id, artifact.name);
-                      }}
-                      download
-                    >
-                      <span>{artifact.kind}</span>
-                      <strong>{artifact.name}</strong>
-                      <small>{humanSize(artifact.size)}</small>
-                    </a>
+                <span style={{ fontSize: 13, color: "#5b6778", fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                  <Sliders size={14} /> 已挂载任务适配器
+                </span>
+                <div className="split-chip-group" style={{ marginTop: 6 }}>
+                  {adapters.map((ad) => (
+                    <span className="split-chip" key={`${ad.task}-${ad.name}`}>
+                      <span>{zhStatus(ad.task)}:</span>
+                      <strong>{ad.name}</strong>
+                    </span>
                   ))}
-                  {!(selectedJob.artifacts ?? []).length ? <div className="empty-row">暂无产物</div> : null}
+                  {!adapters.length ? <span style={{ fontSize: 12, color: "#8a99ad" }}>加载适配器列表中…</span> : null}
                 </div>
               </div>
             </div>
-          </>
-        ) : (
-          <div className="empty-row">请选择一个任务</div>
-        )}
-      </section>
 
-      <section className="panel">
-        <h1>最近运行</h1>
-        <div className="summary-line">
-          {latest ? <StatusBadge tone={jobStatusTone(latest.status)} label={zhStatus(latest.status)} /> : null}
-          <span>{latest?.config_path ?? latest?.report.config ?? "-"}</span>
-          <span>{metricsText(latest)}</span>
-          {metricsSourceLabel(latest) ? <span className="metrics-source">{metricsSourceLabel(latest)}</span> : null}
-        </div>
-        <div className="table compact-table">
-          <div className="table-row table-head">
-            <span>配置</span>
-            <span>状态</span>
-            <span>指标</span>
-          </div>
-          {runs.map((run) => (
-            <div className="table-row" key={`${run.id}-${run.created_at}`}>
-              <span className="mono">{run.config_path ?? run.report.config ?? "-"}</span>
-              <StatusBadge tone={jobStatusTone(run.status)} label={zhStatus(run.status)} />
-              <span>{metricsText(run)}</span>
+            <div className="form-actions-bar">
+              <div>
+                {message ? (
+                  <span className="inline-message" style={{ fontWeight: 500 }}>
+                    {message}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 12.5, color: "#8a99ad" }}>就绪：点击右侧开始异步调度</span>
+                )}
+              </div>
+              <button className="primary-button" onClick={startPipeline} disabled={busy}>
+                <Play size={16} />
+                <span>{busy ? "调度中…" : "启动训练流水线"}</span>
+              </button>
             </div>
-          ))}
-          {!runs.length ? <div className="empty-row">暂无运行记录</div> : null}
-        </div>
-      </section>
+          </section>
 
-      <section className="panel">
-        <div className="panel-header">
-          <h1>误差分析</h1>
-          <button className="icon-button" onClick={inspectErrors} title="分析">
-            <Search size={18} />
-          </button>
-        </div>
-        <div className="form-grid single">
-          <label>
-            <span>样本路径</span>
-            <input value={errorPath} onChange={(event) => setErrorPath(event.target.value)} />
-          </label>
-        </div>
-        <div className="summary-line">
-          <span>样本数：{analysis?.total ?? 0}</span>
-          <span>{analysis ? Object.entries(analysis.by_type).map(([key, value]) => `${key}:${value}`).join(" / ") || "无错误" : "-"}</span>
-        </div>
-      </section>
-
-      <section className="panel">
-        <h1>审计事件</h1>
-        <div className="table compact-table">
-          <div className="table-row table-head">
-            <span>动作</span>
-            <span>对象</span>
-            <span>时间</span>
-          </div>
-          {events.slice(0, 6).map((event) => (
-            <div className="table-row" key={event.id}>
-              <span>{event.action}</span>
-              <span className="mono">{event.target}</span>
-              <span>{event.created_at}</span>
+          <section className="panel">
+            <div className="panel-header">
+              <div className="panel-header-left">
+                <Boxes size={18} color="#176b87" />
+                <h1>产物管理与手动打包工具</h1>
+              </div>
             </div>
-          ))}
-          {!events.length ? <div className="empty-row">暂无审计事件</div> : null}
+
+            <div style={{ display: "grid", gap: 16 }}>
+              <div className="overview-quick-card">
+                <div className="overview-quick-header">
+                  <strong>根据当前配置手动打包</strong>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={buildPackage}
+                    disabled={busy}
+                    style={{ minHeight: 32, padding: "0 12px", fontSize: 12.5 }}
+                  >
+                    <Boxes size={14} />
+                    <span>立即生成交付包</span>
+                  </button>
+                </div>
+                <span style={{ fontSize: 12, color: "#64748b" }}>
+                  跳过训练直接根据配置中的导出权重建立标准目录包与元数据。
+                </span>
+              </div>
+
+              <div className="overview-quick-card">
+                <div className="overview-quick-header">
+                  <strong>上传外部产物 / 权重文件</strong>
+                  <UploadCloud size={16} color="#176b87" />
+                </div>
+                <input
+                  type="file"
+                  onChange={(e) => void submitUpload(e.target.files?.item(0))}
+                  disabled={busy}
+                  style={{ width: "100%", marginTop: 4 }}
+                />
+                <span style={{ fontSize: 12, color: "#64748b" }}>
+                  支持上传 ONNX 权重、报告或评估日志，将自动归档至平台存储池。
+                </span>
+              </div>
+            </div>
+          </section>
         </div>
-      </section>
+      ) : null}
+
+      {/* Tab 3: 运行历史与指标 (全边框表格、东八区时间格式化无T、分页) */}
+      {activeTab === "history" ? (
+        <section className="panel">
+          <div className="panel-header">
+            <div className="panel-header-left">
+              <Activity size={18} color="#176b87" />
+              <h1>流水线运行历史记录与指标</h1>
+              <span className="panel-count-tag">共 {runs.length} 次记录</span>
+            </div>
+            {latest ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 12, color: "#5b6778" }}>最新状态:</span>
+                <StatusBadge tone={jobStatusTone(latest.status)} label={zhStatus(latest.status)} />
+              </div>
+            ) : null}
+          </div>
+
+          <div className="ui-table-container">
+            <table className="ui-table">
+              <thead>
+                <tr>
+                  <th style={{ width: "55px", textAlign: "center" }}>序号</th>
+                  <th style={{ width: "32%" }}>配置路径</th>
+                  <th style={{ width: "15%" }}>执行状态</th>
+                  <th style={{ width: "25%" }}>核心评估指标</th>
+                  <th style={{ width: "23%" }}>执行时间 (东八区)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedRuns.map((run, index) => {
+                  const cfg = run.config_path ?? run.report?.config ?? "-";
+                  const src = run.report?.evaluation?.metrics_source;
+                  const seqNumber = (runPage - 1) * runPageSize + index + 1;
+                  return (
+                    <tr key={`${run.id}-${run.created_at}`}>
+                      <td style={{ textAlign: "center", color: "#64748b", fontWeight: 500 }}>
+                        {seqNumber}
+                      </td>
+                      <td>
+                        <Tooltip content={cfg}>
+                          <span className="cell-ellipsis mono">{cfg}</span>
+                        </Tooltip>
+                      </td>
+                      <td>
+                        <StatusBadge tone={jobStatusTone(run.status)} label={zhStatus(run.status)} />
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <Tooltip content={metricsText(run)}>
+                            <span className="cell-ellipsis mono" style={{ fontSize: 12 }}>
+                              {metricsText(run)}
+                            </span>
+                          </Tooltip>
+                          {src ? <span className="metrics-source">{zhMetricsSource(src)}</span> : null}
+                        </div>
+                      </td>
+                      <td>
+                        <span className="mono" style={{ fontSize: 12, color: "#475569" }}>
+                          {formatBeijingTime(run.created_at)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!paginatedRuns.length ? (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: "center", padding: "30px 12px", color: "#8a99ad" }}>
+                      暂无历史运行记录
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+
+            {runs.length > 0 ? (
+              <Pagination
+                currentPage={runPage}
+                pageSize={runPageSize}
+                total={runs.length}
+                onPageChange={setRunPage}
+                onPageSizeChange={setRunPageSize}
+              />
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      {/* Tab 4: 误差分析与审计日志 (全边框表格、东八区时间无T、分页) */}
+      {activeTab === "audit" ? (
+        <div className="grid-2col">
+          {/* 左侧：误差探测 */}
+          <section className="panel">
+            <div className="panel-header">
+              <div className="panel-header-left">
+                <FileSearch size={18} color="#176b87" />
+                <h1>样本数据误差探测</h1>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: 14 }}>
+              <label>
+                <span>样本清单文件路径</span>
+                <input
+                  value={errorPath}
+                  onChange={(e) => setErrorPath(e.target.value)}
+                  placeholder="例如: data/manifests/example_train_v1.jsonl"
+                />
+              </label>
+
+              <div className="form-actions-bar" style={{ marginTop: 0, paddingTop: 8 }}>
+                <span style={{ fontSize: 12.5, color: "#64748b" }}>
+                  有效样本总数: <strong>{analysis?.total ?? 0}</strong>
+                </span>
+                <button type="button" className="primary-button" onClick={inspectErrors}>
+                  <Search size={14} />
+                  <span>执行分析</span>
+                </button>
+              </div>
+
+              {analysis ? (
+                <div className="issue-list" style={{ marginTop: 8 }}>
+                  <div className="summary-line">
+                    <span>错误分类统计:</span>
+                    <strong>{Object.entries(analysis.by_type).map(([k, v]) => `${k}:${v}`).join(" / ") || "未检测到异常"}</strong>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          {/* 右侧：审计事件全边框表格 */}
+          <section className="panel">
+            <div className="panel-header">
+              <div className="panel-header-left">
+                <Clock size={18} color="#176b87" />
+                <h1>平台操作安全审计日志</h1>
+                <span className="panel-count-tag">共 {events.length} 项</span>
+              </div>
+            </div>
+
+            <div className="ui-table-container">
+              <table className="ui-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: "55px", textAlign: "center" }}>序号</th>
+                    <th style={{ width: "22%" }}>动作类型</th>
+                    <th style={{ width: "45%" }}>操作对象</th>
+                    <th style={{ width: "28%" }}>记录时间 (东八区)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedEvents.map((ev, index) => {
+                    const seqNumber = (auditPage - 1) * auditPageSize + index + 1;
+                    return (
+                      <tr key={ev.id}>
+                        <td style={{ textAlign: "center", color: "#64748b", fontWeight: 500 }}>
+                          {seqNumber}
+                        </td>
+                        <td style={{ fontWeight: 500 }}>{zhAction(ev.action)}</td>
+                        <td>
+                          <Tooltip content={ev.target}>
+                            <span className="cell-ellipsis mono">{ev.target}</span>
+                          </Tooltip>
+                        </td>
+                        <td>
+                          <span className="mono" style={{ fontSize: 12, color: "#475569" }}>
+                            {formatBeijingTime(ev.created_at)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!paginatedEvents.length ? (
+                    <tr>
+                      <td colSpan={4} style={{ textAlign: "center", padding: "26px 12px", color: "#8a99ad" }}>
+                        暂无审计事件
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+
+              {events.length > 0 ? (
+                <Pagination
+                  currentPage={auditPage}
+                  pageSize={auditPageSize}
+                  total={events.length}
+                  onPageChange={setAuditPage}
+                  onPageSizeChange={setAuditPageSize}
+                />
+              ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

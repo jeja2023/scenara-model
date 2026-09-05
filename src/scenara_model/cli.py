@@ -225,7 +225,7 @@ def _cmd_user_set_password(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="scenara-model", description="Scenara Model ????")
+    parser = argparse.ArgumentParser(prog="scenara-model", description="scenara model 命令行工具")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     hash_parser = subparsers.add_parser("hash", help="????? sha256 ??")

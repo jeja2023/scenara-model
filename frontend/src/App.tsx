@@ -128,7 +128,14 @@ export function App() {
       onLogout={handleLogout}
     >
       {activeView === "overview" ? (
-        <Overview health={health} packages={packages} validations={validations} experiments={experiments} pipelineRuns={pipelineRuns} />
+        <Overview
+          health={health}
+          packages={packages}
+          validations={validations}
+          experiments={experiments}
+          pipelineRuns={pipelineRuns}
+          onNavigate={setActiveView}
+        />
       ) : null}
       {activeView === "packages" ? <Packages packages={packages} onRefresh={refresh} /> : null}
       {activeView === "pipeline" ? <Pipeline runs={pipelineRuns} onRefresh={refresh} /> : null}

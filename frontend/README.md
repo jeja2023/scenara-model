@@ -1,4 +1,4 @@
-# Scenara Model Frontend
+# scenara model frontend
 
 React + TypeScript 管理台源码。
 

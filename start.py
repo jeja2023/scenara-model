@@ -1,4 +1,4 @@
-"""景枢模型平台一键启动入口。
+"""scenara model 一键启动入口。
 
 用法（任意目录下均可）：
     python start.py [--host 127.0.0.1] [--port 8080] [--skip-install] [--backend-only]
@@ -16,7 +16,7 @@ MIN_PYTHON = (3, 11)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="景枢模型平台一键启动入口。")
+    parser = argparse.ArgumentParser(description="scenara model 一键启动入口。")
     parser.add_argument("--host", default="127.0.0.1", help="监听地址。")
     parser.add_argument("--port", type=int, default=8080, help="监听端口。")
     parser.add_argument("--skip-install", action="store_true", help="跳过 Python 依赖安装。")

@@ -190,7 +190,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="Scenara Model",
+    title="scenara model",
     version=__version__,
     description="Management API for vision model research artifacts, dataset manifests, experiments, and delivery packages.",
     lifespan=lifespan,

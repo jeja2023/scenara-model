@@ -75,7 +75,7 @@ export function zhField(value: string) {
 }
 
 export function zhContractKind(value: "models-fragment" | "release-decision") {
-  return value === "models-fragment" ? "推理配置片段" : "上线判定";
+  return value === "models-fragment" ? "模型产物交付清单契约" : "发布决策门禁契约";
 }
 
 export function zhSplit(value: string) {
@@ -190,4 +190,34 @@ export function zhIssueDetail(issue: IssueLike) {
   ].filter(Boolean);
   const detail = detailMap[issue.code] ?? "请检查对应文件和字段。";
   return suffix.length ? `${detail}（${suffix.join("，")}）` : detail;
+}
+
+export function zhMetricsSource(source?: string | null) {
+  if (source === "measured") return "实测评估";
+  if (source === "declared") return "自报声明";
+  if (source === "baseline") return "基线指标";
+  return source || "未声明";
+}
+
+export function zhStream(stream?: string | null) {
+  if (stream === "stdout") return "标准输出";
+  if (stream === "stderr") return "错误输出";
+  return stream || "日志输出";
+}
+
+export function zhAction(action?: string | null) {
+  const map: Record<string, string> = {
+    "pipeline.start": "启动流水线",
+    "pipeline.cancel": "取消流水线任务",
+    "pipeline.retry": "重试流水线任务",
+    "package.validate": "校验模型包",
+    "package.build": "打包模型交付物",
+    "artifact.upload": "上传产物文件",
+    "experiment.save": "保存实验记录",
+    "manifest.validate": "校验数据清单",
+    "contract.validate": "校验交付契约",
+    "auth.login": "用户登录",
+    "auth.logout": "退出登录"
+  };
+  return action ? map[action] ?? action : "-";
 }
