@@ -40,10 +40,12 @@ import type { AdapterInfo, AuditEvent, ErrorAnalysis, PipelineArtifact, Pipeline
 import { formatBeijingTime } from "../utils/date";
 
 const configOptions = [
-  { label: "YOLO 目标检测基线 (detection_yolo_baseline.yml)", value: "configs/experiments/detection_yolo_baseline.yml" },
-  { label: "ReID 行人重识别基线 (reid_baseline.yml)", value: "configs/experiments/reid_baseline.yml" },
-  { label: "图像分类基线 (classification_baseline.yml)", value: "configs/experiments/classification_baseline.yml" },
-  { label: "语义分割基线 (segmentation_baseline.yml)", value: "configs/experiments/segmentation_baseline.yml" }
+  { label: "【真实生产训练】YOLOv8 目标检测外部训练 (detection_ultralytics_external.yml)", value: "configs/experiments/detection_ultralytics_external.yml" },
+  { label: "【真实生产训练】FastReID 行人重识别外部训练 (reid_fastreid_external.yml)", value: "configs/experiments/reid_fastreid_external.yml" },
+  { label: "【自检冒烟基线】YOLO 目标检测基线 (detection_yolo_baseline.yml)", value: "configs/experiments/detection_yolo_baseline.yml" },
+  { label: "【自检冒烟基线】ReID 行人重识别基线 (reid_baseline.yml)", value: "configs/experiments/reid_baseline.yml" },
+  { label: "【自检冒烟基线】图像分类基线 (classification_baseline.yml)", value: "configs/experiments/classification_baseline.yml" },
+  { label: "【自检冒烟基线】语义分割基线 (segmentation_baseline.yml)", value: "configs/experiments/segmentation_baseline.yml" }
 ];
 
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
