@@ -476,16 +476,16 @@ export function Pipeline({ runs, onRefresh }: PipelineProps) {
                     </Tooltip>
                   </div>
                   <div className="detail-card-item">
-                    <span>开始时间 (东八区)</span>
+                    <span>开始时间</span>
                     <strong>{formatBeijingTime(selectedJob.started_at ?? selectedJob.created_at)}</strong>
                   </div>
                   <div className="detail-card-item">
-                    <span>完成时间 (东八区)</span>
+                    <span>完成时间</span>
                     <strong>{formatBeijingTime(selectedJob.completed_at)}</strong>
                   </div>
                   {selectedJob.cancelled_at ? (
                     <div className="detail-card-item">
-                      <span>取消时间 (东八区)</span>
+                      <span>取消时间</span>
                       <strong>{formatBeijingTime(selectedJob.cancelled_at)}</strong>
                     </div>
                   ) : null}
@@ -709,7 +709,7 @@ export function Pipeline({ runs, onRefresh }: PipelineProps) {
                   <th style={{ width: "32%" }}>配置路径</th>
                   <th style={{ width: "15%" }}>执行状态</th>
                   <th style={{ width: "25%" }}>核心评估指标</th>
-                  <th style={{ width: "23%" }}>执行时间 (东八区)</th>
+                  <th style={{ width: "23%" }}>执行时间</th>
                 </tr>
               </thead>
               <tbody>
@@ -831,7 +831,7 @@ export function Pipeline({ runs, onRefresh }: PipelineProps) {
                     <th style={{ width: "55px", textAlign: "center" }}>序号</th>
                     <th style={{ width: "22%" }}>动作类型</th>
                     <th style={{ width: "45%" }}>操作对象</th>
-                    <th style={{ width: "28%" }}>记录时间 (东八区)</th>
+                    <th style={{ width: "28%" }}>记录时间</th>
                   </tr>
                 </thead>
                 <tbody>
