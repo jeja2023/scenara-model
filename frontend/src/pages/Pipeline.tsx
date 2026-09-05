@@ -35,7 +35,7 @@ import { Pagination } from "../components/Pagination";
 import { StatusBadge } from "../components/StatusBadge";
 import { TabBar, type TabItem } from "../components/TabBar";
 import { Tooltip } from "../components/Tooltip";
-import { zhAction, zhMetricsSource, zhStatus, zhStream } from "../i18n";
+import { zhAction, zhArtifactKind, zhLogDetail, zhLogMessage, logMessageTone, zhMetricsSource, zhStatus, zhStream } from "../i18n";
 import type { AdapterInfo, AuditEvent, ErrorAnalysis, PipelineArtifact, PipelineJobLog, PipelineJobRecord, PipelineRunRecord } from "../types";
 import { formatBeijingTime } from "../utils/date";
 
@@ -510,15 +510,27 @@ export function Pipeline({ runs, onRefresh }: PipelineProps) {
                       <Terminal size={15} /> 实时执行日志 ({selectedJob.logs?.length ?? 0})
                     </h2>
                     <div className="log-list">
-                      {(selectedJob.logs ?? []).slice(-30).map((log) => (
-                        <div className="log-row" key={logKey(log)}>
-                          <span>[{zhStream(log.stream)}]</span>
-                          <Tooltip content={log.message}>
-                            <strong className="cell-ellipsis">{log.message}</strong>
-                          </Tooltip>
-                          <code className="cell-ellipsis">{JSON.stringify(log.detail)}</code>
-                        </div>
-                      ))}
+                      {(selectedJob.logs ?? []).slice(-30).map((log) => {
+                        const isConsole = log.stream === "stdout" || log.stream === "stderr";
+                        const zhStage = zhStream(log.stream);
+                        const zhMsg = zhLogMessage(log.message);
+                        const detailStr = zhLogDetail(log.detail);
+                        const tone = logMessageTone(log.message);
+                        const fullTooltip = `[${zhStage}] ${zhMsg}${detailStr ? ` | ${detailStr}` : ""}`;
+                        return (
+                          <div className={`log-row${isConsole ? " is-console" : ""}`} key={logKey(log)}>
+                            <span className="log-stage">[{zhStage}]</span>
+                            <Tooltip content={fullTooltip}>
+                              <strong className={`cell-ellipsis log-status ${tone}`}>{zhMsg}</strong>
+                            </Tooltip>
+                            {!isConsole ? (
+                              <Tooltip content={detailStr || "-"}>
+                                <code className="cell-ellipsis">{detailStr || "-"}</code>
+                              </Tooltip>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                       {!(selectedJob.logs ?? []).length ? (
                         <div className="empty-row" style={{ color: "#64748b", background: "transparent" }}>
                           暂无实时控制台日志
@@ -546,7 +558,7 @@ export function Pipeline({ runs, onRefresh }: PipelineProps) {
                             <Tooltip content={artifact.name}>
                               <strong className="cell-ellipsis">{artifact.name}</strong>
                             </Tooltip>
-                            <span>{artifact.kind}</span>
+                            <span>{zhArtifactKind(artifact.kind)}</span>
                           </div>
                           <span className="artifact-size-tag">{humanSize(artifact.size)}</span>
                         </a>

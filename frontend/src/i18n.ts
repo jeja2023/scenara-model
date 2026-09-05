@@ -200,9 +200,131 @@ export function zhMetricsSource(source?: string | null) {
 }
 
 export function zhStream(stream?: string | null) {
-  if (stream === "stdout") return "标准输出";
-  if (stream === "stderr") return "错误输出";
-  return stream || "日志输出";
+  if (!stream) return "系统运行";
+  const map: Record<string, string> = {
+    job: "流水线任务",
+    training: "模型训练",
+    export: "模型导出",
+    evaluation: "指标评估",
+    package: "产物归档",
+    stdout: "标准输出",
+    stderr: "错误输出",
+    system: "系统运行",
+    audit: "安全审计",
+    worker: "调度节点"
+  };
+  return map[stream.toLowerCase()] ?? stream;
+}
+
+export function zhLogMessage(message?: string | null) {
+  if (!message) return "-";
+  const map: Record<string, string> = {
+    started: "已启动",
+    completed: "已完成",
+    failed: "执行失败",
+    cancelled: "已取消",
+    skipped: "已跳过",
+    running: "运行中",
+    pending: "等待调度",
+    success: "成功",
+    error: "错误",
+    "cancelled before start": "启动前已取消",
+    "cancelled before training": "训练前已取消"
+  };
+  const lower = message.toLowerCase();
+  if (map[lower]) {
+    return map[lower];
+  }
+  if (message.startsWith("skipped:")) {
+    return message.replace("skipped:", "已跳过:");
+  }
+  return message;
+}
+
+export function logMessageTone(message?: string | null): "ok" | "warn" | "danger" | "info" {
+  if (!message) return "info";
+  const lower = message.toLowerCase();
+  if (lower.includes("completed") || lower.includes("success") || lower.includes("完成")) return "ok";
+  if (lower.includes("failed") || lower.includes("error") || lower.includes("失败")) return "danger";
+  if (lower.includes("cancel") || lower.includes("skip") || lower.includes("取消") || lower.includes("跳过")) return "warn";
+  return "info";
+}
+
+const DETAIL_KEY_MAP: Record<string, string> = {
+  config_path: "配置模板",
+  status: "执行状态",
+  onnx_path: "ONNX产物",
+  output_root: "归档根目录",
+  package_dir: "交付包目录",
+  model_file: "模型文件",
+  metrics_source: "指标来源",
+  metrics: "评估指标",
+  error: "错误信息",
+  reason: "原因",
+  cancelled_reason: "取消原因",
+  package: "生成交付包",
+  task: "任务类型",
+  duration_seconds: "耗时(秒)",
+  primary_metric: "核心指标",
+  architecture: "模型架构",
+  dataset_id: "数据集编号",
+  version: "版本号"
+};
+
+export function zhLogDetail(detail: any): string {
+  if (detail === undefined || detail === null) return "";
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (typeof detail !== "object") {
+    return String(detail);
+  }
+
+  const parts: string[] = [];
+  for (const [key, val] of Object.entries(detail)) {
+    const label = DETAIL_KEY_MAP[key] ?? key;
+    let displayVal: any = val;
+
+    if (typeof val === "boolean") {
+      displayVal = val ? "是" : "否";
+    } else if (typeof val === "string") {
+      if (key === "status") {
+        if (val === "completed") displayVal = "已完成";
+        else if (val === "failed") displayVal = "执行失败";
+        else if (val === "started") displayVal = "已启动";
+        else if (val === "cancelled") displayVal = "已取消";
+        else if (val === "running") displayVal = "运行中";
+      } else if (key === "metrics_source") {
+        displayVal = zhMetricsSource(val);
+      }
+    } else if (typeof val === "object" && val !== null) {
+      if (key === "metrics") {
+        displayVal = Object.entries(val)
+          .map(([mk, mv]) => `${mk}: ${typeof mv === "number" ? mv.toFixed(4).replace(/\.?0+$/, "") : mv}`)
+          .join(", ");
+      } else {
+        displayVal = JSON.stringify(val);
+      }
+    }
+    parts.push(`${label}: ${displayVal}`);
+  }
+  return parts.length ? parts.join(" | ") : JSON.stringify(detail);
+}
+
+export function zhArtifactKind(kind?: string | null) {
+  if (!kind) return "产物文件";
+  const map: Record<string, string> = {
+    onnx: "ONNX 模型权重",
+    export_report: "导出评估报告",
+    model_package: "标准交付模型包",
+    metrics: "评估指标数据",
+    log: "执行控制台日志",
+    model_card: "模型卡说明",
+    labels: "类别标签表",
+    weights: "网络权重文件",
+    checkpoint: "检查点文件"
+  };
+  return map[kind.toLowerCase()] ?? kind;
 }
 
 export function zhAction(action?: string | null) {
@@ -221,3 +343,4 @@ export function zhAction(action?: string | null) {
   };
   return action ? map[action] ?? action : "-";
 }
+
