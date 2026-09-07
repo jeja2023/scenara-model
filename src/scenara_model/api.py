@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
+import json
 import logging
 import os
+import re
 import secrets
 import socket
 import threading
@@ -25,6 +28,7 @@ from scenara_model import __version__
 from scenara_model.adapters.registry import list_adapters
 from scenara_model.auth import generate_session_token, hash_password, token_digest, verify_password
 from scenara_model.contracts import validate_models_fragment, validate_release_decision
+from scenara_model.data_platform import DataPlatformClient, DataPlatformContext, DataPlatformError
 from scenara_model.dataset_versions import DatasetVersionReference, validate_dataset_version_reference
 from scenara_model.datasets.manifest import validate_manifest
 from scenara_model.deployment_feedback import DeploymentFeedbackError, DeploymentFeedbackSignatureError, verify_deployment_feedback
@@ -56,8 +60,12 @@ GENERATED_ADMIN_PASSWORD_BYTES = 12
 # 本实例标识：多实例部署时区分任务归属，避免启动回收误杀其他实例的运行中任务。
 WORKER_ID = f"{socket.gethostname()}:{os.getpid()}"
 
-# 无需登录即可访问的 API 路径（登录本身与健康检查）。
-PUBLIC_API_PATHS = {"/api/auth/login", "/api/v1/deployment-feedback"}
+# 无需业务认证即可访问的 API 路径。Core Webhook 使用独立的事件签名校验。
+PUBLIC_API_PATHS = {"/api/v1/deployment-feedback"}
+CORE_CONTEXT_TIMESTAMP_HEADER = "x-scenara-context-timestamp"
+CORE_CONTEXT_SIGNATURE_HEADER = "x-scenara-context-signature"
+CORE_CONTEXT_ID_PATTERN = re.compile(r"^[^,\s]{1,512}$")
+CORE_TRACE_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 
 
 class _LoginThrottle:
@@ -106,6 +114,8 @@ def _bootstrap_admin_user() -> str | None:
 
     返回自动生成的口令；配置了 SCENARA_MODEL_ADMIN_PASSWORD 或用户已存在时返回 None。
     """
+    if SETTINGS.auth_mode == "core":
+        return None
     try:
         if STORE.count_users() > 0:
             return None
@@ -293,7 +303,8 @@ class ErrorAnalysisRequest(ApiModel):
 
 class DatasetVersionRegisterRequest(ApiModel):
     reference: DatasetVersionReference | None = None
-    manifest_path: str
+    manifest_path: str | None = None
+    data_version_id: str | None = None
     name: str | None = None
     version: str | None = None
     task: str | None = None
@@ -340,6 +351,133 @@ def _resolve_bearer_identity(authorization: str | None) -> dict[str, Any] | None
     return None
 
 
+def _resolve_core_identity(request: Request) -> dict[str, Any] | None:
+    """Validate a Core-signed delegated identity context.
+
+    Model does not own users, memberships, roles, or product entitlements in
+    this mode. Core authenticates the caller and signs the short-lived context;
+    Model only verifies the transport credential and canonical declaration.
+    """
+    if not SETTINGS.service_token or not SETTINGS.context_signing_key:
+        return None
+    authorization = request.headers.get("Authorization")
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization[len("Bearer "):].strip()
+    if not hmac.compare_digest(token, SETTINGS.service_token):
+        return None
+
+    def required(name: str, *, max_length: int = 512) -> str | None:
+        value = request.headers.get(name)
+        if value is None or not value.strip() or len(value) > max_length:
+            return None
+        return value.strip()
+
+    tenant_id = required("X-Scenara-Tenant-Id")
+    project_id = required("X-Scenara-Project-Id")
+    principal_id = required("X-Scenara-Principal-Id")
+    principal_type = required("X-Scenara-Principal-Type")
+    scopes_raw = required("X-Scenara-Permission-Scopes", max_length=2048)
+    entitlements_raw = required("X-Scenara-Product-Entitlements", max_length=1024)
+    request_id = required("X-Request-Id", max_length=128)
+    trace_id = required("X-Trace-Id", max_length=64)
+    timestamp_raw = required(CORE_CONTEXT_TIMESTAMP_HEADER, max_length=32)
+    signature = required(CORE_CONTEXT_SIGNATURE_HEADER, max_length=128)
+    if not all((tenant_id, project_id, principal_id, principal_type, scopes_raw, entitlements_raw, request_id, trace_id, timestamp_raw, signature)):
+        return None
+    assert tenant_id is not None
+    assert project_id is not None
+    assert principal_id is not None
+    assert principal_type is not None
+    assert scopes_raw is not None
+    assert entitlements_raw is not None
+    assert request_id is not None
+    assert trace_id is not None
+    assert timestamp_raw is not None
+    assert signature is not None
+    if principal_type not in {"user", "service_account"} or not CORE_TRACE_ID_PATTERN.fullmatch(trace_id):
+        return None
+    try:
+        timestamp = int(timestamp_raw)
+    except ValueError:
+        return None
+    if abs(int(time.time()) - timestamp) > SETTINGS.context_max_age_seconds:
+        return None
+    scopes = tuple(sorted({item.strip() for item in scopes_raw.replace(" ", ",").split(",") if item.strip()}))
+    entitlements = tuple(sorted({item.strip() for item in entitlements_raw.split(",") if item.strip()}))
+    if not scopes or not entitlements:
+        return None
+    if any(not CORE_CONTEXT_ID_PATTERN.fullmatch(value) for value in (tenant_id, project_id, principal_id, request_id)):
+        return None
+    expected = sign_request_context(
+        SETTINGS.context_signing_key,
+        method=request.method,
+        path=request.url.path,
+        tenant_id=tenant_id,
+        project_id=project_id,
+        principal_id=principal_id,
+        principal_type=principal_type,
+        scopes=scopes,
+        entitlements=entitlements,
+        request_id=request_id,
+        trace_id=trace_id,
+        timestamp=timestamp,
+    )
+    if not hmac.compare_digest(signature, expected):
+        return None
+    return {
+        "username": principal_id,
+        "role": "delegated",
+        "session": None,
+        "tenant_id": tenant_id,
+        "project_id": project_id,
+        "principal_id": principal_id,
+        "principal_type": principal_type,
+        "scopes": scopes,
+        "product_entitlements": entitlements,
+        "request_id": request_id,
+        "trace_id": trace_id,
+    }
+
+
+def _resolve_identity(request: Request) -> dict[str, Any] | None:
+    if SETTINGS.auth_mode == "core":
+        return _resolve_core_identity(request)
+    return _resolve_bearer_identity(request.headers.get("Authorization"))
+
+
+def sign_request_context(
+    signing_key: str,
+    *,
+    method: str,
+    path: str,
+    tenant_id: str,
+    project_id: str,
+    principal_id: str,
+    principal_type: str,
+    scopes: tuple[str, ...],
+    entitlements: tuple[str, ...],
+    request_id: str,
+    trace_id: str,
+    timestamp: int,
+) -> str:
+    payload = {
+        "entitlements": sorted(set(entitlements)),
+        "method": method.upper(),
+        "path": path,
+        "principal_id": principal_id,
+        "principal_type": principal_type,
+        "project_id": project_id,
+        "request_id": request_id,
+        "scopes": sorted(set(scopes)),
+        "tenant_id": tenant_id,
+        "timestamp": timestamp,
+        "trace_id": trace_id,
+    }
+    encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hmac.new(signing_key.encode("utf-8"), encoded, hashlib.sha256).hexdigest()
+
+
 class LoginRequest(ApiModel):
     username: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=1, max_length=512)
@@ -348,7 +486,7 @@ class LoginRequest(ApiModel):
 def require_auth(request: Request) -> dict[str, Any]:
     identity = getattr(request.state, "identity", None)
     if identity is None:
-        identity = _resolve_bearer_identity(request.headers.get("Authorization"))
+        identity = _resolve_identity(request)
     if identity is None:
         raise HTTPException(status_code=401, detail="Unauthorized")
     return identity
@@ -362,8 +500,9 @@ async def auth_middleware(request: Request, call_next: Callable[[Request], Await
     解析结果缓存到 request.state，供路由级 Depends(require_auth) 复用。
     """
     path = request.url.path
-    if path.startswith("/api") and path not in PUBLIC_API_PATHS and request.method != "OPTIONS":
-        identity = _resolve_bearer_identity(request.headers.get("Authorization"))
+    local_login_public = SETTINGS.auth_mode == "local" and path == "/api/auth/login"
+    if path.startswith("/api") and path not in PUBLIC_API_PATHS and not local_login_public and request.method != "OPTIONS":
+        identity = _resolve_identity(request)
         if identity is None:
             return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
         request.state.identity = identity
@@ -578,6 +717,7 @@ def health() -> dict[str, Any]:
         "storage_backend": SETTINGS.storage_backend,
         "storage_uri": SETTINGS.storage_uri,
         "auth_required": True,
+        "auth_mode": SETTINGS.auth_mode,
         "pipeline_workers": SETTINGS.pipeline_workers,
         "external_shell_commands_allowed": SETTINGS.allow_shell_commands,
     }
@@ -585,6 +725,8 @@ def health() -> dict[str, Any]:
 
 @app.post("/api/auth/login")
 def login(request: LoginRequest, http_request: Request) -> dict[str, Any]:
+    if SETTINGS.auth_mode == "core":
+        raise HTTPException(status_code=404, detail="local login is disabled in Core authentication mode")
     client_host = http_request.client.host if http_request.client else "unknown"
     throttle_key = f"{request.username}|{client_host}"
     retry_after = LOGIN_THROTTLE.retry_after(throttle_key)
@@ -892,8 +1034,48 @@ def list_dataset_versions(limit: int = Query(default=100, ge=1, le=500)) -> dict
     return {"datasets": STORE.list_dataset_versions(limit)}
 
 
-@app.post("/api/datasets/versions", dependencies=[Depends(require_auth)])
-def register_dataset_version(request: DatasetVersionRegisterRequest) -> dict[str, Any]:
+@app.post("/api/datasets/versions")
+def register_dataset_version(
+    request: DatasetVersionRegisterRequest,
+    identity: dict[str, Any] = Depends(require_auth),
+) -> dict[str, Any]:
+    if request.data_version_id is not None:
+        if request.reference is not None or SETTINGS.auth_mode != "core":
+            raise HTTPException(
+                status_code=400,
+                detail="data_version_id requires Core authentication mode and cannot be combined with reference",
+            )
+        try:
+            context = DataPlatformContext(
+                tenant_id=str(identity["tenant_id"]),
+                project_id=str(identity["project_id"]),
+                principal_id=str(identity["principal_id"]),
+                principal_type=str(identity["principal_type"]),
+                scopes=tuple(identity["scopes"]),
+                entitlements=tuple(identity["product_entitlements"]),
+                request_id=str(identity["request_id"]),
+                trace_id=str(identity["trace_id"]),
+            )
+            data_client = DataPlatformClient(
+                SETTINGS.data_platform_url,
+                service_token=str(SETTINGS.data_platform_service_token),
+                context_signing_key=str(SETTINGS.data_platform_context_signing_key),
+                timeout_seconds=SETTINGS.data_platform_timeout_seconds,
+                max_retries=SETTINGS.data_platform_max_retries,
+            )
+            try:
+                reference, remote_manifest_path = data_client.fetch_dataset_version(
+                    request.data_version_id,
+                    context=context,
+                    workspace_root=WORKSPACE_ROOT,
+                )
+            finally:
+                data_client.close()
+            request = request.model_copy(update={"reference": reference, "manifest_path": str(remote_manifest_path)})
+        except (KeyError, TypeError, ValueError, DataPlatformError) as exc:
+            raise HTTPException(status_code=502, detail="无法从 scenara-data 获取已发布数据集版本") from exc
+    if not request.manifest_path:
+        raise HTTPException(status_code=400, detail="manifest_path or data_version_id is required")
     manifest_path = workspace_path(request.manifest_path)
     reference = request.reference
     if reference is not None:

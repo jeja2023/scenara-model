@@ -8,6 +8,24 @@ from typing import Any, Protocol
 from urllib.parse import urlparse
 
 
+def _secret_env(name: str) -> str | None:
+    value = os.environ.get(name)
+    file_name = os.environ.get(f"{name}_FILE")
+    if value and file_name:
+        raise ValueError(f"{name} and {name}_FILE cannot both be configured")
+    if value and value.strip():
+        return value.strip()
+    if not file_name:
+        return None
+    try:
+        content = Path(file_name).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise ValueError(f"cannot read {name}_FILE") from exc
+    if not content:
+        raise ValueError(f"{name}_FILE is empty")
+    return content
+
+
 @dataclass(frozen=True)
 class StoredObject:
     backend: str
@@ -93,8 +111,8 @@ class S3ObjectStore:
                 "s3",
                 endpoint_url=endpoint_url,
                 region_name=region_name,
-                aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or os.environ.get("SCENARA_MODEL_S3_ACCESS_KEY_ID"),
-                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or os.environ.get("SCENARA_MODEL_S3_SECRET_ACCESS_KEY"),
+                aws_access_key_id=_secret_env("AWS_ACCESS_KEY_ID") or _secret_env("SCENARA_MODEL_S3_ACCESS_KEY_ID"),
+                aws_secret_access_key=_secret_env("AWS_SECRET_ACCESS_KEY") or _secret_env("SCENARA_MODEL_S3_SECRET_ACCESS_KEY"),
             )
 
     def _key_for(self, key: str) -> str:

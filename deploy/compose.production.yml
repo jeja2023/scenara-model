@@ -1,0 +1,86 @@
+# Production deployment baseline for the independent scenara model service.
+# Core owns the public Console and signs delegated identity contexts.
+services:
+  model-migrate:
+    image: ${SCENARA_MODEL_IMAGE:?set SCENARA_MODEL_IMAGE to an approved immutable image}
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      SCENARA_MODEL_METADATA_DB_FILE: /run/secrets/model_database_url
+      SCENARA_MODEL_WORKSPACE: /app
+    secrets:
+      - model_database_url
+    networks: [platform]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=256m"]
+    restart: "no"
+
+  model-api:
+    image: ${SCENARA_MODEL_IMAGE:?set SCENARA_MODEL_IMAGE to an approved immutable image}
+    command: ["uvicorn", "scenara_model.api:app", "--host", "0.0.0.0", "--port", "8080"]
+    environment:
+      SCENARA_MODEL_DEPLOYMENT_PROFILE: production
+      SCENARA_MODEL_AUTH_MODE: core
+      SCENARA_MODEL_METADATA_DB_FILE: /run/secrets/model_database_url
+      SCENARA_MODEL_SERVICE_TOKEN_FILE: /run/secrets/model_service_token
+      SCENARA_MODEL_CONTEXT_SIGNING_KEY_FILE: /run/secrets/model_context_signing_key
+      SCENARA_MODEL_DATA_PLATFORM_URL: ${SCENARA_MODEL_DATA_PLATFORM_URL:?set HTTPS scenara-data URL}
+      SCENARA_MODEL_DATA_PLATFORM_SERVICE_TOKEN_FILE: /run/secrets/model_data_service_token
+      SCENARA_MODEL_DATA_PLATFORM_CONTEXT_SIGNING_KEY_FILE: /run/secrets/model_data_context_signing_key
+      SCENARA_MODEL_DEPLOYMENT_FEEDBACK_SECRET_FILE: /run/secrets/model_deployment_feedback_secret
+      SCENARA_MODEL_CORS_ORIGINS: ${SCENARA_MODEL_CORS_ORIGINS:?set HTTPS Core origins}
+      SCENARA_MODEL_STORAGE_BACKEND: ${SCENARA_MODEL_STORAGE_BACKEND:?set s3 or minio}
+      SCENARA_MODEL_STORAGE_URI: ${SCENARA_MODEL_STORAGE_URI:?set immutable object storage URI}
+      SCENARA_MODEL_S3_ENDPOINT_URL: ${SCENARA_MODEL_S3_ENDPOINT_URL:?set HTTPS S3 endpoint}
+      SCENARA_MODEL_S3_REGION: ${SCENARA_MODEL_S3_REGION:?set S3 region}
+      SCENARA_MODEL_S3_ACCESS_KEY_ID_FILE: /run/secrets/model_s3_access_key
+      SCENARA_MODEL_S3_SECRET_ACCESS_KEY_FILE: /run/secrets/model_s3_secret_key
+      SCENARA_MODEL_SERVE_FRONTEND: "false"
+    secrets:
+      - model_database_url
+      - model_service_token
+      - model_context_signing_key
+      - model_data_service_token
+      - model_data_context_signing_key
+      - model_deployment_feedback_secret
+      - model_s3_access_key
+      - model_s3_secret_key
+    networks: [platform]
+    depends_on:
+      model-migrate:
+        condition: service_completed_successfully
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=512m"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+secrets:
+  model_database_url:
+    external: true
+  model_service_token:
+    external: true
+  model_context_signing_key:
+    external: true
+  model_data_service_token:
+    external: true
+  model_data_context_signing_key:
+    external: true
+  model_deployment_feedback_secret:
+    external: true
+  model_s3_access_key:
+    external: true
+  model_s3_secret_key:
+    external: true
+
+networks:
+  platform:
+    external: true
+    name: ${SCENARA_PLATFORM_NETWORK:?set controlled platform network}

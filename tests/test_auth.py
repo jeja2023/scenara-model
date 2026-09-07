@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import scenara_model.api as api
+from scenara_model.api import sign_request_context
 from scenara_model.auth import hash_password, token_digest, verify_password
 from scenara_model.storage import MetadataStore
 
@@ -186,3 +187,54 @@ def test_expired_session_rejected() -> None:
     assert api.STORE.get_auth_session("expired-hash") is None
     purged = api.STORE.purge_expired_auth_sessions()
     assert purged >= 1
+
+
+def test_core_auth_mode_accepts_only_core_signed_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = TestClient(api.app)
+    signing_key = "model-context-signing-key-that-is-long-enough"
+    service_token = "model-service-token-that-is-long-enough"
+    monkeypatch.setattr(
+        api,
+        "SETTINGS",
+        replace(
+            api.SETTINGS,
+            auth_mode="core",
+            deployment_profile="production",
+            service_token=service_token,
+            context_signing_key=signing_key,
+            context_max_age_seconds=300,
+            serve_frontend=False,
+        ),
+    )
+    headers = {
+        "Authorization": f"Bearer {service_token}",
+        "X-Scenara-Tenant-Id": "tenant-a",
+        "X-Scenara-Project-Id": "project-a",
+        "X-Scenara-Principal-Id": "user-a",
+        "X-Scenara-Principal-Type": "user",
+        "X-Scenara-Permission-Scopes": "model.read",
+        "X-Scenara-Product-Entitlements": "model",
+        "X-Request-Id": "req-model-core-auth",
+        "X-Trace-Id": "0123456789abcdef0123456789abcdef",
+    }
+    import time
+
+    timestamp = int(time.time())
+    headers["X-Scenara-Context-Timestamp"] = str(timestamp)
+    headers["X-Scenara-Context-Signature"] = sign_request_context(
+        signing_key,
+        method="GET",
+        path="/api/experiments",
+        tenant_id="tenant-a",
+        project_id="project-a",
+        principal_id="user-a",
+        principal_type="user",
+        scopes=("model.read",),
+        entitlements=("model",),
+        request_id="req-model-core-auth",
+        trace_id="0123456789abcdef0123456789abcdef",
+        timestamp=timestamp,
+    )
+
+    assert client.get("/api/experiments", headers=headers).status_code == 200
+    assert client.post("/api/auth/login", json={"username": "admin", "password": TEST_ADMIN_PASSWORD}).status_code == 401

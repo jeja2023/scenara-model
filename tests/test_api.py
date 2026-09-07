@@ -208,6 +208,32 @@ def test_deployment_feedback_rejects_bad_or_expired_signatures(monkeypatch: pyte
     assert expired.status_code == 401
 
 
+def test_deployment_feedback_remains_available_in_core_auth_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    secret = "deployment-feedback-secret"
+    monkeypatch.setattr(
+        api,
+        "SETTINGS",
+        replace(api.SETTINGS, auth_mode="core", deployment_feedback_secret=secret),
+    )
+    client = TestClient(api.app)
+    event_id = "mde-core-auth"
+    body = _deployment_feedback_body(
+        event_id=event_id,
+        created_at=datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        from_status=None,
+        to_status="approved",
+    )
+
+    response = client.post(
+        "/api/v1/deployment-feedback",
+        content=body,
+        headers=_deployment_feedback_headers(secret, body, event_id),
+    )
+
+    assert response.status_code == 202
+    assert response.json()["applied"] is True
+
+
 def test_health_does_not_run_sqlite_pragma_for_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(api, "SETTINGS", replace(api.SETTINGS, metadata_db="postgresql://localhost/scenara_model"))
 

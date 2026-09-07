@@ -1,0 +1,68 @@
+name: scenara-model-shared-test
+
+# Shared-infrastructure test profile. PostgreSQL, Redis and MinIO are owned by
+# scenara/deploy/shared-infra; this file owns only Model API and migrations.
+services:
+  model-migrate:
+    build:
+      context: ..
+      args:
+        SCENARA_MODEL_EXTRAS: postgres,s3
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      SCENARA_MODEL_METADATA_DB: postgresql://scenara_model:${SCENARA_MODEL_DB_PASSWORD:?set SCENARA_MODEL_DB_PASSWORD}@postgres:5432/scenara_model
+      SCENARA_MODEL_WORKSPACE: /app
+    networks: [platform]
+    restart: "no"
+
+  model-api:
+    build:
+      context: ..
+      args:
+        SCENARA_MODEL_EXTRAS: postgres,s3
+    command: ["uvicorn", "scenara_model.api:app", "--host", "0.0.0.0", "--port", "8080"]
+    environment: &model-environment
+      SCENARA_MODEL_DEPLOYMENT_PROFILE: development
+      SCENARA_MODEL_AUTH_MODE: core
+      SCENARA_MODEL_WORKSPACE: /app
+      SCENARA_MODEL_METADATA_DB: postgresql://scenara_model:${SCENARA_MODEL_DB_PASSWORD:?set SCENARA_MODEL_DB_PASSWORD}@postgres:5432/scenara_model
+      SCENARA_MODEL_SERVICE_TOKEN: ${SCENARA_MODEL_SERVICE_TOKEN:?set SCENARA_MODEL_SERVICE_TOKEN}
+      SCENARA_MODEL_CONTEXT_SIGNING_KEY: ${SCENARA_MODEL_CONTEXT_SIGNING_KEY:?set SCENARA_MODEL_CONTEXT_SIGNING_KEY}
+      SCENARA_MODEL_DATA_PLATFORM_URL: http://data-api:8081
+      SCENARA_MODEL_DATA_PLATFORM_SERVICE_TOKEN: ${SCENARA_MODEL_DATA_PLATFORM_SERVICE_TOKEN:?set SCENARA_MODEL_DATA_PLATFORM_SERVICE_TOKEN}
+      SCENARA_MODEL_DATA_PLATFORM_CONTEXT_SIGNING_KEY: ${SCENARA_DATA_CONTEXT_SIGNING_KEY:?set SCENARA_DATA_CONTEXT_SIGNING_KEY}
+      SCENARA_MODEL_DATA_PLATFORM_TIMEOUT_SECONDS: "10"
+      SCENARA_MODEL_DATA_PLATFORM_MAX_RETRIES: "2"
+      SCENARA_MODEL_STORAGE_BACKEND: minio
+      SCENARA_MODEL_STORAGE_URI: minio://scenara-model-artifacts/models
+      SCENARA_MODEL_S3_ENDPOINT_URL: http://minio:9000
+      SCENARA_MODEL_S3_REGION: us-east-1
+      SCENARA_MODEL_S3_ACCESS_KEY_ID: ${SCENARA_MODEL_S3_ACCESS_KEY:?set SCENARA_MODEL_S3_ACCESS_KEY}
+      SCENARA_MODEL_S3_SECRET_ACCESS_KEY: ${SCENARA_MODEL_S3_SECRET_KEY:?set SCENARA_MODEL_S3_SECRET_KEY}
+      SCENARA_MODEL_DEPLOYMENT_FEEDBACK_SECRET: ${SCENARA_MODEL_DEPLOYMENT_FEEDBACK_SECRET:?set SCENARA_MODEL_DEPLOYMENT_FEEDBACK_SECRET}
+      SCENARA_MODEL_DEPLOYMENT_FEEDBACK_MAX_AGE_SECONDS: "300"
+      SCENARA_MODEL_CORS_ORIGINS: http://127.0.0.1:8000
+      SCENARA_MODEL_SERVE_FRONTEND: "false"
+    networks: [platform]
+    depends_on:
+      model-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${SCENARA_MODEL_TEST_PORT:-58080}:8080"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=512m"]
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+networks:
+  platform:
+    external: true
+    name: ${SCENARA_PLATFORM_NETWORK:-scenara-platform}

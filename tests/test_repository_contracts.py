@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import yaml
@@ -9,7 +10,7 @@ import yaml
 from scenara_model.dataset_versions import DatasetVersionReference
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACTS_ROOT = ROOT.parent / "scenara-contracts"
+CONTRACTS_ROOT = Path(os.environ.get("SCENARA_CONTRACTS_ROOT", str(ROOT.parent / "scenara-contracts")))
 
 
 def test_locked_repository_contract_release_and_consumer_examples() -> None:

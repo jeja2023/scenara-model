@@ -40,7 +40,7 @@ export function Shell({ activeView, onViewChange, onRefresh, apiStatus, username
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <img className="brand-mark" src={brandMark} alt="景枢模型平台" />
+          <img className="brand-mark" src={brandMark} alt="scenara model" />
           <div>
             <strong>scenara model</strong>
             <span>景枢模型平台</span>
@@ -59,7 +59,7 @@ export function Shell({ activeView, onViewChange, onRefresh, apiStatus, username
           ))}
         </nav>
         <div className="sidebar-footer">
-          <span>景枢模型平台</span>
+          <span>scenara model</span>
           <span>v1.0.0</span>
         </div>
       </aside>

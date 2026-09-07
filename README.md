@@ -1,6 +1,6 @@
 # scenara model
 
-当前版本：`1.0.0-dev.5`。完整变更见 [更新日志.md](更新日志.md)，更新说明见 [docs/发布说明_1.0.0-dev.5.md](docs/发布说明_1.0.0-dev.5.md)。
+当前版本：`1.0.0-dev.6`。完整变更见 [更新日志.md](更新日志.md)，更新说明见 [docs/发布说明_1.0.0-dev.6.md](docs/发布说明_1.0.0-dev.6.md)。
 
 `scenara-model` 是 scenara model 责任仓库，负责实验、训练任务、模型评估、模型版本、模型注册和不可变 Model Package 发布。训练数据只引用 `scenara-data` 发布的不可变 Dataset Version；生产准入、激活、流量切换和回滚由 `scenara` 负责。
 
@@ -20,7 +20,8 @@
 - 支持按文件摘要校验 Paddle、PyTorch 和多头模型 bundle，并生成 Contracts `1.2.0` 模型准入载荷；ReID 可消费 Data 发布的布控误报复核数据集版本。
 - 实验记录、流水线运行、任务日志、产物索引、模型包校验、Dataset Version 引用、模型注册和模型制品发布的元数据存储。
 - local/S3/MinIO 对象存储入口、上传接口和误差样本摘要，以及 PostgreSQL/S3 目标探针和 PostgreSQL 备份恢复工具。
-- 迁移期本地鉴权与静态令牌兼容实现；正式部署前必须替换为 Core 信任的短期服务凭据和统一权限 ID。
+- 迁移期本地鉴权与静态令牌兼容实现；生产环境通过 Core 委托身份上下文（HMAC-SHA256 签名与时间戳校验）统一认证，支持直接拉取 `scenara-data` 不可变数据集版本。
+- 支持 `production` 与 `development` 部署 profile 隔离及生产 Docker Compose 自动化安全门禁校验。
 
 ## 一键启动
 
