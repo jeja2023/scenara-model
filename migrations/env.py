@@ -21,6 +21,12 @@ def _metadata_db_url() -> str:
     if value == ":memory:":
         return "sqlite:///:memory:"
     if "://" in value:
+        # The production image installs psycopg v3, not the legacy psycopg2
+        # driver. SQLAlchemy's bare PostgreSQL URL defaults to psycopg2.
+        if value.startswith("postgresql://"):
+            return "postgresql+psycopg://" + value.removeprefix("postgresql://")
+        if value.startswith("postgres://"):
+            return "postgresql+psycopg://" + value.removeprefix("postgres://")
         return value
     workspace_root = Path(os.environ.get("SCENARA_MODEL_WORKSPACE", Path.cwd())).resolve()
     path = Path(value)
