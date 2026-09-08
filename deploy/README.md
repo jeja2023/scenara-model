@@ -8,6 +8,8 @@
 
 当前测试数据环境可使用 `deploy/compose.shared-test.yml`。它只启动 Model API 和迁移任务，连接 Core 仓库 `deploy/shared-infra/compose.yml` 提供的共享 PostgreSQL、Redis、MinIO 和平台网络；Model 使用独立的 `scenara_model` 数据库及 `scenara-model-artifacts` bucket。
 
+单机内网生产使用 Core 仓库 `deploy/shared-infra/compose.tls.yml` 提供的内部 CA/TLS，Model 通过 `model.scenara.internal` 和 `data.scenara.internal` 访问内部服务，不需要公网域名。
+
 生产部署前必须完成 Core IAM/权限透传、PostgreSQL、Redis、S3-compatible Provider、备份恢复、安全扫描和契约兼容门禁。当前成熟度为 `seed`，不得作为生产就绪声明。
 
 FastReID 使用独立的 Linux GPU 运行时：`deploy/training/Dockerfile.fastreid` 和 `deploy/training/docker-compose.fastreid.yml`。构建、GPU 预检和 manifest 物化步骤见 [FastReID训练运行手册](../docs/FastReID训练运行手册.md)。
