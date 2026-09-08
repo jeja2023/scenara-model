@@ -14,8 +14,6 @@ if config.config_file_name is not None:
 def _metadata_db_url() -> str:
     inline = os.environ.get("SCENARA_MODEL_METADATA_DB", "")
     file_name = os.environ.get("SCENARA_MODEL_METADATA_DB_FILE", "")
-    if inline and file_name:
-        raise RuntimeError("SCENARA_MODEL_METADATA_DB and SCENARA_MODEL_METADATA_DB_FILE cannot both be configured")
     if file_name:
         value = Path(file_name).read_text(encoding="utf-8").strip()
     else:

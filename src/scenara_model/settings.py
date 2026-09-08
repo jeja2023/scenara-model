@@ -35,19 +35,17 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
 def _secret(name: str) -> str | None:
     value = os.environ.get(name)
     file_name = os.environ.get(f"{name}_FILE")
-    if value and file_name:
-        raise ValueError(f"{name} and {name}_FILE cannot both be configured")
+    if file_name:
+        try:
+            content = Path(file_name).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise ValueError(f"cannot read {name}_FILE") from exc
+        if not content:
+            raise ValueError(f"{name}_FILE is empty")
+        return content
     if value is not None and value.strip():
         return value.strip()
-    if not file_name:
-        return None
-    try:
-        content = Path(file_name).read_text(encoding="utf-8").strip()
-    except OSError as exc:
-        raise ValueError(f"cannot read {name}_FILE") from exc
-    if not content:
-        raise ValueError(f"{name}_FILE is empty")
-    return content
+    return None
 
 
 @dataclass(frozen=True)
