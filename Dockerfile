@@ -1,7 +1,7 @@
 ARG NODE_IMAGE=node:22-alpine
 ARG PYTHON_IMAGE=python:3.12-slim
 # 需要这些后端时，通过 --build-arg SCENARA_MODEL_EXTRAS=postgres,s3 进行构建。
-ARG SCENARA_MODEL_EXTRAS=""
+ARG SCENARA_MODEL_EXTRAS="postgres,s3,migrations"
 
 FROM ${NODE_IMAGE} AS frontend
 

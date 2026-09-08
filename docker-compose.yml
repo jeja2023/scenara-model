@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        SCENARA_MODEL_EXTRAS: postgres,s3
+        SCENARA_MODEL_EXTRAS: postgres,s3,migrations
     ports:
       - "8080:8080"
     restart: unless-stopped

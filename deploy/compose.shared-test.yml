@@ -7,7 +7,7 @@ services:
     build:
       context: ..
       args:
-        SCENARA_MODEL_EXTRAS: postgres,s3
+        SCENARA_MODEL_EXTRAS: postgres,s3,migrations
     command: ["alembic", "upgrade", "head"]
     environment:
       SCENARA_MODEL_METADATA_DB: postgresql://scenara_model:${SCENARA_MODEL_DB_PASSWORD:?set SCENARA_MODEL_DB_PASSWORD}@postgres:5432/scenara_model
@@ -19,7 +19,7 @@ services:
     build:
       context: ..
       args:
-        SCENARA_MODEL_EXTRAS: postgres,s3
+        SCENARA_MODEL_EXTRAS: postgres,s3,migrations
     command: ["uvicorn", "scenara_model.api:app", "--host", "0.0.0.0", "--port", "8080"]
     environment: &model-environment
       SCENARA_MODEL_DEPLOYMENT_PROFILE: development
