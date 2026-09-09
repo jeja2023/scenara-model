@@ -45,6 +45,24 @@ def test_core_authentication_requires_distinct_data_credentials() -> None:
         core.validate()
 
 
+def test_standalone_profile_allows_local_auth_and_requires_data_access() -> None:
+    settings = load_settings()
+    standalone = replace(
+        settings,
+        deployment_profile="standalone",
+        auth_mode="local",
+        serve_frontend=True,
+        data_platform_url="https://data.example",
+        data_platform_service_token="d" * 32,
+        data_platform_context_signing_key="c" * 32,
+        deployment_feedback_secret=None,
+        metadata_db="postgresql://model@db/model",
+        storage_backend="s3",
+    )
+
+    standalone.validate()
+
+
 def test_secret_values_can_be_loaded_from_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     service_file = tmp_path / "service-token"
     service_file.write_text("service-token-from-file", encoding="utf-8")

@@ -84,17 +84,20 @@ class Settings:
     deployment_profile: str = "development"
 
     def validate(self) -> None:
-        if self.deployment_profile not in {"development", "production"}:
-            raise ValueError("SCENARA_MODEL_DEPLOYMENT_PROFILE must be development or production")
+        if self.deployment_profile not in {"development", "standalone", "production"}:
+            raise ValueError("SCENARA_MODEL_DEPLOYMENT_PROFILE must be development, standalone, or production")
         if self.deployment_profile == "production" and self.auth_mode != "core":
             raise ValueError("SCENARA_MODEL_AUTH_MODE must be core in production")
-        if self.deployment_profile == "production":
+        if self.deployment_profile == "standalone" and self.auth_mode != "local":
+            raise ValueError("SCENARA_MODEL_AUTH_MODE must be local in standalone mode")
+        if self.deployment_profile in {"standalone", "production"}:
             if not self.deployment_feedback_secret:
-                raise ValueError("SCENARA_MODEL_DEPLOYMENT_FEEDBACK_SECRET is required in production")
+                if self.deployment_profile == "production":
+                    raise ValueError("SCENARA_MODEL_DEPLOYMENT_FEEDBACK_SECRET is required in production")
             if self.metadata_db == ":memory:" or not self.metadata_db.startswith(("postgresql://", "postgres://")):
-                raise ValueError("SCENARA_MODEL_METADATA_DB must use PostgreSQL in production")
+                raise ValueError("SCENARA_MODEL_METADATA_DB must use PostgreSQL in standalone/production")
             if self.storage_backend not in {"s3", "minio"}:
-                raise ValueError("SCENARA_MODEL_STORAGE_BACKEND must be s3 or minio in production")
+                raise ValueError("SCENARA_MODEL_STORAGE_BACKEND must be s3 or minio in standalone/production")
         if self.auth_mode not in {"local", "core"}:
             raise ValueError("SCENARA_MODEL_AUTH_MODE must be local or core")
         if self.auth_mode == "core":
@@ -126,6 +129,17 @@ class Settings:
                 raise ValueError("SCENARA_MODEL_DATA_PLATFORM_CONTEXT_SIGNING_KEY must differ from SCENARA_MODEL_DATA_PLATFORM_SERVICE_TOKEN")
             if self.data_platform_timeout_seconds <= 0:
                 raise ValueError("SCENARA_MODEL_DATA_PLATFORM_TIMEOUT_SECONDS must be positive")
+        if self.deployment_profile == "standalone":
+            if not self.data_platform_url:
+                raise ValueError("SCENARA_MODEL_DATA_PLATFORM_URL is required in standalone mode")
+            if not self.data_platform_url.startswith("https://"):
+                raise ValueError("SCENARA_MODEL_DATA_PLATFORM_URL must use HTTPS in standalone mode")
+            if not self.data_platform_service_token or len(self.data_platform_service_token) < 24:
+                raise ValueError("SCENARA_MODEL_DATA_PLATFORM_SERVICE_TOKEN must contain at least 24 characters")
+            if not self.data_platform_context_signing_key or len(self.data_platform_context_signing_key) < 32:
+                raise ValueError("SCENARA_MODEL_DATA_PLATFORM_CONTEXT_SIGNING_KEY must contain at least 32 characters")
+            if self.data_platform_context_signing_key == self.data_platform_service_token:
+                raise ValueError("SCENARA_MODEL_DATA_PLATFORM_CONTEXT_SIGNING_KEY must differ from SCENARA_MODEL_DATA_PLATFORM_SERVICE_TOKEN")
 
 
 def load_settings() -> Settings:

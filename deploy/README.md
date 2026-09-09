@@ -8,6 +8,31 @@
 
 当前测试数据环境可使用 `deploy/compose.shared-test.yml`。它只启动 Model API 和迁移任务，连接 Core 仓库 `deploy/shared-infra/compose.yml` 提供的共享 PostgreSQL、Redis、MinIO 和平台网络；Model 使用独立的 `scenara_model` 数据库及 `scenara-model-artifacts` bucket。
 
+## 独立训练模式
+
+当 Model 需要脱离 Core 进行实验和训练时，使用 `deploy/compose.standalone.yml`。该模式：
+
+- 使用 Model 自己的登录页面和 `model_admin_password` secret；
+- `SCENARA_MODEL_AUTH_MODE=local`；
+- Model API 同时托管独立 Web 前端；
+- 仍通过 `model_data_service_token` 和 `model_data_context_signing_key` 读取 Data 已发布 Dataset Version；
+- 可以提交训练流水线、查看 Job、日志和模型产物；
+- 不允许直接改变 Core 的在线模型绑定。
+
+独立训练模式不是最终模型生产发布模式。模型包完成训练、评估、审批后，仍应交给 Core 执行发布、激活、灰度和回滚。
+
+创建独立管理员密码：
+
+```bash
+printf '%s' '<model-admin-password>' | sudo docker secret create model_admin_password -
+```
+
+独立 Web 地址：
+
+```text
+https://model.scenara.internal:8080/
+```
+
 单机内网生产使用 Core 仓库 `deploy/shared-infra/compose.tls.yml` 提供的内部 CA/TLS，Model 通过 `model.scenara.internal` 和 `data.scenara.internal` 访问内部服务，不需要公网域名。
 
 生产部署前必须完成 Core IAM/权限透传、PostgreSQL、Redis、S3-compatible Provider、备份恢复、安全扫描和契约兼容门禁。当前成熟度为 `seed`，不得作为生产就绪声明。

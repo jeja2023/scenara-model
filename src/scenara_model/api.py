@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -343,11 +344,28 @@ def _resolve_bearer_identity(authorization: str | None) -> dict[str, Any] | None
     token = authorization[len("Bearer "):].strip()
     if not token:
         return None
+    def local_identity(username: str, role: str, session: dict[str, Any] | None) -> dict[str, Any]:
+        return {
+            "username": username,
+            "role": role,
+            "session": session,
+            "tenant_id": "default",
+            "project_id": "default",
+            "principal_id": username,
+            "principal_type": "user",
+            "scopes": (
+                "data.dataset.read",
+                "data.lineage.read",
+            ),
+            "product_entitlements": ("data",),
+            "request_id": f"model-local-{uuid4().hex}",
+            "trace_id": uuid4().hex,
+        }
     if SETTINGS.auth_token and hmac.compare_digest(token, SETTINGS.auth_token):
-        return {"username": "api-token", "role": "service", "session": None}
+        return local_identity("api-token", "service", None)
     session = STORE.get_auth_session(token_digest(token))
     if session is not None:
-        return {"username": session["username"], "role": "user", "session": session}
+        return local_identity(session["username"], "user", session)
     return None
 
 
@@ -1040,10 +1058,10 @@ def register_dataset_version(
     identity: dict[str, Any] = Depends(require_auth),
 ) -> dict[str, Any]:
     if request.data_version_id is not None:
-        if request.reference is not None or SETTINGS.auth_mode != "core":
+        if request.reference is not None or SETTINGS.auth_mode not in {"core", "local"}:
             raise HTTPException(
                 status_code=400,
-                detail="data_version_id requires Core authentication mode and cannot be combined with reference",
+                detail="data_version_id requires a supported authentication mode and cannot be combined with reference",
             )
         try:
             context = DataPlatformContext(
