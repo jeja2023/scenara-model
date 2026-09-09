@@ -60,6 +60,10 @@ services:
       - ${SCENARA_PLATFORM_CERTS_DIR:?set SCENARA_PLATFORM_CERTS_DIR}/ca/ca.crt:/run/tls/ca.crt:ro
       - ${SCENARA_PLATFORM_CERTS_DIR:?set SCENARA_PLATFORM_CERTS_DIR}/model/server.crt:/run/tls/server.crt:ro
       - ${SCENARA_PLATFORM_CERTS_DIR:?set SCENARA_PLATFORM_CERTS_DIR}/model/server.key:/run/tls/server.key:ro
+      # The API materializes verified remote Dataset Version manifests below
+      # /app/artifacts/remote-datasets. Keep the container read-only while
+      # providing that application-owned workspace as a persistent volume.
+      - model-artifacts:/app/artifacts
     networks:
       platform:
         aliases: [model.scenara.internal]
@@ -100,3 +104,6 @@ networks:
   platform:
     external: true
     name: ${SCENARA_PLATFORM_NETWORK:?set controlled platform network}
+
+volumes:
+  model-artifacts:
