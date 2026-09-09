@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from scenara_model.naming import is_semver
 from scenara_model.utils import read_jsonl
 
-ALLOWED_SPLITS = {"train", "val", "test", "regression", "edge"}
+ALLOWED_SPLITS = {"train", "val", "test", "regression", "edge", "query", "gallery"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 REQUIRED_FIELDS = {"image", "split", "source", "dataset_version"}
 
@@ -48,7 +50,7 @@ def validate_manifest(
     resolved = Path(path)
     issues: list[ManifestIssue] = []
     try:
-        rows = read_jsonl(resolved)
+        rows = _read_manifest_rows(resolved)
     except Exception as exc:  # noqa: BLE001
         return ManifestValidation(
             path=resolved,
@@ -138,4 +140,73 @@ def validate_manifest(
         split_counts=split_counts,
         issues=issues,
     )
+
+
+def _read_manifest_rows(path: Path) -> list[dict[str, Any]]:
+    """Read native JSONL manifests and the structured Data-platform document.
+
+    ``scenara-data`` publishes an immutable JSON document containing a
+    ``samples`` array.  Model's local training tools use JSONL rows, so the
+    adapter normalizes the document in memory while leaving the downloaded
+    bytes untouched for DatasetVersionReference SHA-256 verification.
+    """
+
+    raw = path.read_text(encoding="utf-8")
+    try:
+        document = json.loads(raw)
+    except json.JSONDecodeError:
+        return read_jsonl(path)
+
+    if not isinstance(document, dict) or not isinstance(document.get("samples"), list):
+        return read_jsonl(path)
+
+    dataset_version = str(document.get("version") or "")
+    rows: list[dict[str, Any]] = []
+    for sample in document["samples"]:
+        if not isinstance(sample, dict):
+            raise ValueError("Data-platform manifest samples must be objects")
+        sample_id = str(sample.get("sample_id") or "")
+        reference = sample.get("content_ref") or sample.get("source_ref")
+        if not isinstance(reference, dict):
+            raise ValueError(f"Data-platform sample {sample_id} has no object reference")
+
+        bucket = str(reference.get("bucket") or "")
+        key = str(reference.get("key") or "")
+        checksum = str(
+            reference.get("checksum")
+            or sample.get("content_sha256")
+            or ""
+        )
+        digest = checksum.removeprefix("sha256:")
+        if not bucket or not key or len(digest) != 64:
+            raise ValueError(f"Data-platform sample {sample_id} has an invalid object reference")
+
+        image = f"s3://{bucket}/{quote(key, safe='/')}"
+        version = reference.get("version")
+        if version:
+            image += f"?versionId={quote(str(version), safe='')}"
+        image += f"#sha256={digest}"
+
+        split = str(sample.get("dataset_split") or "")
+        if split == "validation":
+            split = "val"
+
+        source = str(
+            sample.get("source_system")
+            or sample.get("source_resource_id")
+            or f"scenara-data://sample/{sample_id}"
+        )
+        rows.append(
+            {
+                "sample_id": sample_id,
+                "image": image,
+                "split": split,
+                "source": source,
+                "dataset_version": dataset_version,
+                "content_sha256": checksum,
+                "media_type": sample.get("media_type"),
+                "metadata": sample.get("metadata", {}),
+            }
+        )
+    return rows
 

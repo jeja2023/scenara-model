@@ -58,3 +58,22 @@ def test_validate_manifest_can_check_local_images(workspace_tmp_path: Path) -> N
 
     assert not result.ok
     assert "manifest.image_not_found" in {issue.code for issue in result.issues}
+
+
+def test_validate_manifest_accepts_structured_data_platform_document(workspace_tmp_path: Path) -> None:
+    manifest = workspace_tmp_path / "data-platform.json"
+    manifest.write_text(
+        '{"version":"1.0.1","samples":[{"sample_id":"smp_1",'
+        '"content_ref":{"bucket":"scenara-datasets","key":"e2e/sample.png",'
+        '"version":"version:abc","checksum":"sha256:'
+        + "a" * 64
+        + '","size_bytes":1,"content_type":"image/png"},'
+        '"dataset_split":"train","source_system":"scenara-core"}]}',
+        encoding="utf-8",
+    )
+
+    result = validate_manifest(manifest, check_local_files=True)
+
+    assert result.ok
+    assert result.total_rows == 1
+    assert result.split_counts == {"train": 1}
