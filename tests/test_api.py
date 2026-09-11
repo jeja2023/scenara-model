@@ -99,7 +99,8 @@ def test_health_endpoint() -> None:
     body = response.json()
     assert body["status"] == "ok"
     assert "workspace" in body
-    assert "metadata_db" in body
+    assert body["metadata_backend"] in {"memory", "postgresql", "sqlite"}
+    assert "metadata_db" not in body
     assert "metadata_journal_mode" in body
 
 
@@ -243,6 +244,21 @@ def test_health_does_not_run_sqlite_pragma_for_postgres(monkeypatch: pytest.Monk
     monkeypatch.setattr(api.STORE, "journal_mode", unexpected_journal_mode)
 
     assert api.health()["metadata_journal_mode"] == "postgresql"
+
+
+def test_health_does_not_expose_metadata_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
+    password = "health-endpoint-secret"
+    monkeypatch.setattr(
+        api,
+        "SETTINGS",
+        replace(api.SETTINGS, metadata_db=f"postgresql://scenara_model:{password}@postgres/scenara_model"),
+    )
+
+    body = api.health()
+
+    assert body["metadata_backend"] == "postgresql"
+    assert "metadata_db" not in body
+    assert password not in str(body)
 
 
 def test_auth_dependency_reuses_middleware_identity(monkeypatch: pytest.MonkeyPatch) -> None:

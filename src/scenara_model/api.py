@@ -722,13 +722,21 @@ def _metadata_journal_mode() -> str:
     return STORE.journal_mode()
 
 
+def _metadata_backend() -> str:
+    if SETTINGS.metadata_db == ":memory:":
+        return "memory"
+    if SETTINGS.metadata_db.startswith(("postgresql://", "postgres://")):
+        return "postgresql"
+    return "sqlite"
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": __version__,
         "workspace": str(WORKSPACE_ROOT),
-        "metadata_db": SETTINGS.metadata_db,
+        "metadata_backend": _metadata_backend(),
         "metadata_persistent": SETTINGS.metadata_db != ":memory:",
         "metadata_journal_mode": _metadata_journal_mode(),
         "serve_frontend": SETTINGS.serve_frontend and SETTINGS.frontend_dist.exists(),
